@@ -272,7 +272,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   const runJob = (jobId: string, args: ImageArgs, exec: ExecLike, sourceImages: SourceImages, sourceIds: string[], parent?: AbortSignal): Promise<GeneratedValue> =>
     jobs.run(jobId, async signal => {
       const value = await generateImage(jobId, args, exec, sourceImages, sourceIds, signal)
-      return { attachment: toAttachmentJson(value.attachment), value }
+      return { attachment: toAttachmentJson(value.attachment), path: value.savedTo, value }
     }, parent).then(settled => settled.value)
 
   /** Background job: failures are logged (the placeholder shows them) and reported to the Agent. */

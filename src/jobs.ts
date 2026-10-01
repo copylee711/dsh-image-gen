@@ -25,6 +25,8 @@ export interface JobStatus {
   width: number
   height: number
   error?: string
+  /** Where the finished image is on disk (workspace copy, else the gallery copy), for "open file". */
+  path?: string
 }
 
 interface Job extends JobStatus {
@@ -72,7 +74,7 @@ export class JobRegistry {
    * signal as `parent`). Settles the job; rejects with
    * the work's error so a blocking caller can report it.
    */
-  async run<T extends { attachment: AttachmentJson }>(id: string, work: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal): Promise<T> {
+  async run<T extends { attachment: AttachmentJson; path?: string | undefined }>(id: string, work: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal): Promise<T> {
     const job = this.jobs.get(id)
     if (job === undefined) throw new Error(`unknown image job ${id}`)
     const controller = new AbortController()
@@ -84,7 +86,7 @@ export class JobRegistry {
     parent?.addEventListener('abort', abort, { once: true })
     try {
       const value = await work(controller.signal)
-      Object.assign(job, { status: 'done', attachment: value.attachment, width: value.attachment.width, height: value.attachment.height })
+      Object.assign(job, { status: 'done', attachment: value.attachment, width: value.attachment.width, height: value.attachment.height, ...(value.path === undefined ? {} : { path: value.path }) })
       return value
     } catch (error) {
       Object.assign(job, { status: 'failed', error: error instanceof Error ? error.message : String(error) })
@@ -102,7 +104,8 @@ export class JobRegistry {
     if (job !== undefined) return { ...publicStatus(job), ...(job.attachment === undefined ? {} : { attachment: job.attachment }) }
     const item = await this.gallery.findByJobId(id)
     if (item === undefined) return undefined
-    return { id, status: 'done', width: item.attachment.width, height: item.attachment.height, attachment: item.attachment }
+    const path = item.savedTo ?? item.filePath
+    return { id, status: 'done', width: item.attachment.width, height: item.attachment.height, attachment: item.attachment, ...(path === undefined ? {} : { path }) }
   }
 
   /** Abort running jobs (plugin unload); they settle as failed. */
@@ -118,7 +121,11 @@ export class JobRegistry {
 }
 
 function publicStatus(job: Job): JobStatus {
-  return { id: job.id, status: job.status, width: job.width, height: job.height, ...(job.error === undefined ? {} : { error: job.error }) }
+  return {
+    id: job.id, status: job.status, width: job.width, height: job.height,
+    ...(job.error === undefined ? {} : { error: job.error }),
+    ...(job.path === undefined ? {} : { path: job.path }),
+  }
 }
 
 /**

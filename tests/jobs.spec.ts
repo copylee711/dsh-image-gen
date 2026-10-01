@@ -41,8 +41,8 @@ describe('JobRegistry', () => {
     const jobs = new JobRegistry(gallery)
     const job = jobs.create({ width: 16, height: 9 })
     expect(await jobs.status(job.id)).toMatchObject({ status: 'pending', width: 16, height: 9 })
-    await jobs.run(job.id, async () => ({ attachment: ATTACHMENT }))
-    expect(await jobs.status(job.id)).toMatchObject({ status: 'done', width: 1600, height: 900, attachment: ATTACHMENT })
+    await jobs.run(job.id, async () => ({ attachment: ATTACHMENT, path: 'D:/ws/copylee-image-gen/image-1.png' }))
+    expect(await jobs.status(job.id)).toMatchObject({ status: 'done', width: 1600, height: 900, attachment: ATTACHMENT, path: 'D:/ws/copylee-image-gen/image-1.png' })
   })
 
   it('records a failure and rethrows it to a blocking caller', async () => {
@@ -83,9 +83,9 @@ describe('JobRegistry', () => {
   })
 
   it('answers finished jobs from the gallery after a restart', async () => {
-    await gallery.addItems([{ attachment: ATTACHMENT, prompt: 'p', providerId: 'x', model: 'm', output: '16:9', projectId: 'conversation', jobId: '11111111-2222-4333-8444-555555555555' }])
+    await gallery.addItems([{ attachment: ATTACHMENT, prompt: 'p', providerId: 'x', model: 'm', output: '16:9', projectId: 'conversation', jobId: '11111111-2222-4333-8444-555555555555', savedTo: '/ws/image.png' }])
     const fresh = new JobRegistry(gallery)
-    expect(await fresh.status('11111111-2222-4333-8444-555555555555')).toMatchObject({ status: 'done', width: 1600, height: 900 })
+    expect(await fresh.status('11111111-2222-4333-8444-555555555555')).toMatchObject({ status: 'done', width: 1600, height: 900, path: '/ws/image.png' })
     expect(await fresh.status('99999999-2222-4333-8444-555555555555')).toBeUndefined()
   })
 })
