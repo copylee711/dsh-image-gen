@@ -2,7 +2,7 @@
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { downloadImage, ensureVersionedBase, joinURL, readBoundedText, toDataUrl, type FetchedImage } from './download.js'
 import type { FetchLike } from './http.js'
-import { redactSecrets } from './redact.js'
+import { providerErrorDetail, redactSecrets } from './redact.js'
 
 const ERROR_LIMIT = 4096
 const RESPONSE_LIMIT = 1024 * 1024
@@ -45,7 +45,7 @@ export async function generateSiliconFlowImage(input: SiliconFlowInput): Promise
     }),
   })
   const text = await readBoundedText(response, RESPONSE_LIMIT)
-  if (!response.ok) throw new Error(`${label} image request failed (${String(response.status)}) POST ${endpoint}: ${redactSecrets(text, input.apiKey).slice(0, ERROR_LIMIT)}`)
+  if (!response.ok) throw new Error(`${label} image request failed (${String(response.status)}) POST ${endpoint}: ${providerErrorDetail(text, input.apiKey)}`)
   let payload: unknown
   try {
     payload = JSON.parse(text)

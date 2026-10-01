@@ -1,7 +1,7 @@
 /** Google Gemini Interactions API adapter. */
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { AspectRatio, ImageSize } from './shared.js'
-import { redactSecrets } from './redact.js'
+import { providerErrorDetail, redactSecrets } from './redact.js'
 import { detectImageMediaType } from './reference-image.js'
 import type { FetchLike } from './http.js'
 
@@ -91,7 +91,7 @@ async function requestGoogleImage(input: GoogleRequestBase & {
     }),
   })
   const text = await readBoundedText(response, Math.ceil(input.maxBytes * 1.4) + ERROR_LIMIT, label)
-  if (!response.ok) throw new Error(`${label} failed (${response.status}): ${redactSecrets(text, input.apiKey).slice(0, ERROR_LIMIT)}`)
+  if (!response.ok) throw new Error(`${label} failed (${response.status}): ${providerErrorDetail(text, input.apiKey)}`)
   let payload: unknown
   try {
     payload = JSON.parse(text)

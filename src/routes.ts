@@ -8,7 +8,9 @@ import { detectSystemProxy, resetSystemProxyCache } from './system-proxy.js'
 import { parseImageAttachmentRef } from './reference-image.js'
 import { ensureVersionedBase } from './download.js'
 import { RouteError, jsonRoute, readJsonBody, requestSignal, sendJson, str, stringArray } from './route-util.js'
-import { fileExists, openFolder, removeImageCopy, revealInFileManager } from './image-files.js'
+import { fileExists, isInside, openFolder, removeImageCopy, revealInFileManager } from './image-files.js'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { generateAndStore, imageDir, saveImageCopy, settingsView, toAttachmentJson, type PluginServices } from './services.js'
 import { normalizeSettings, requireProvider } from './settings-store.js'
 import { capabilitiesOf, effectiveModel, type GlobalProxy, type ProviderEntry } from './shared.js'
@@ -291,6 +293,16 @@ async function ensureCopy(services: PluginServices, item: GalleryItem): Promise<
   const ref = parseImageAttachmentRef(item.attachment)
   if (ref === undefined) throw new RouteError(404, '图片引用无效')
   const stored = await services.attachments.readImage(ref)
+  // A deleted copy comes back under its recorded name (a fresh name would carry a new timestamp).
+  if (item.filePath !== undefined && isInside(await imageDir(services), item.filePath)) {
+    try {
+      await mkdir(dirname(item.filePath), { recursive: true })
+      await writeFile(item.filePath, stored.data)
+      return item.filePath
+    } catch {
+      // Fall through to a fresh copy.
+    }
+  }
   const path = await saveImageCopy(services, item.attachment, stored.data, item.prompt)
   if (path === undefined) throw new RouteError(500, '无法写入图片文件，请检查「图片保存目录」')
   await services.gallery.setFilePath(item.id, path)

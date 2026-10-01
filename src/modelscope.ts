@@ -10,7 +10,7 @@
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { abortableDelay, downloadImage, ensureVersionedBase, joinURL, readBoundedText, toDataUrl, type FetchedImage } from './download.js'
 import type { FetchLike } from './http.js'
-import { redactSecrets } from './redact.js'
+import { providerErrorDetail, redactSecrets } from './redact.js'
 
 const ERROR_LIMIT = 4096
 const RESPONSE_LIMIT = 1024 * 1024
@@ -63,7 +63,7 @@ export async function generateModelScopeImage(input: ModelScopeInput): Promise<F
     }),
   })
   const submitText = await readBoundedText(submit, RESPONSE_LIMIT)
-  if (!submit.ok) throw new Error(`${label} image request failed (${String(submit.status)}) POST ${submitURL}: ${redactSecrets(submitText, input.apiKey).slice(0, ERROR_LIMIT)}`)
+  if (!submit.ok) throw new Error(`${label} image request failed (${String(submit.status)}) POST ${submitURL}: ${providerErrorDetail(submitText, input.apiKey)}`)
   const submitted = parseJson(submitText, label)
   const direct = imageUrlOf(submitted)
   if (direct !== undefined) return downloadImage(direct, { fetch: doFetch, maxBytes: input.maxBytes, signal: input.signal, label })
@@ -82,7 +82,7 @@ export async function generateModelScopeImage(input: ModelScopeInput): Promise<F
       headers: { authorization: `Bearer ${input.apiKey}`, 'x-modelscope-task-type': 'image_generation' },
     })
     const pollText = await readBoundedText(poll, RESPONSE_LIMIT)
-    if (!poll.ok) throw new Error(`${label} task query failed (${String(poll.status)}) GET ${taskURL}: ${redactSecrets(pollText, input.apiKey).slice(0, ERROR_LIMIT)}`)
+    if (!poll.ok) throw new Error(`${label} task query failed (${String(poll.status)}) GET ${taskURL}: ${providerErrorDetail(pollText, input.apiKey)}`)
     const task = parseJson(pollText, label)
     const status = typeof task.task_status === 'string' ? task.task_status.toUpperCase() : ''
     if (status === 'SUCCEED' || status === 'SUCCEEDED') {

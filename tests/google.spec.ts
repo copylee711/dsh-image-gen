@@ -99,7 +99,7 @@ describe('generateGoogleImage', () => {
     vi.stubGlobal('fetch', vi.fn(async () => response({ error: { message: 'bad key' } }, { status: 403 })))
     await expect(generateGoogleImage({
       apiKey: 'key', endpoint, model: 'model', prompt: 'cat', aspectRatio: '1:1', imageSize: '1K', maxBytes: 1024, signal,
-    })).rejects.toThrow('Google image generation failed (403): {"error":{"message":"bad key"}}')
+    })).rejects.toThrow('Google image generation failed (403): bad key')
   })
 
   it('reports the real successful response when it contains no image', async () => {

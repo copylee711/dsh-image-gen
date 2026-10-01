@@ -1,6 +1,6 @@
 /** DashScope Qwen Image generation and editing adapter. */
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
-import { redactSecrets } from './redact.js'
+import { providerErrorDetail, redactSecrets } from './redact.js'
 import { detectImageMediaType } from './reference-image.js'
 import type { FetchLike } from './http.js'
 
@@ -116,7 +116,7 @@ async function requestQwenImage(options: DashScopeImageOptions & {
   })
 
   if (!response.ok) {
-    const errorText = redactSecrets(await response.text(), options.apiKey)
+    const errorText = providerErrorDetail(await response.text(), options.apiKey)
     throw new Error(`DashScope image ${options.operation} failed (${String(response.status)}): ${errorText}`)
   }
 

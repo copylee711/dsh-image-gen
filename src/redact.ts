@@ -32,3 +32,39 @@ export function redactSecrets(text: string, ...secrets: Array<string | undefined
   for (const pattern of KEY_SHAPED_PATTERNS) redacted = redacted.replace(pattern, REDACTED)
   return redacted
 }
+
+const DETAIL_LIMIT = 600
+
+function textOf(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
+}
+
+/** `message (code)` from the common provider error shapes, or undefined. */
+function jsonErrorSummary(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const body = value as Record<string, unknown>
+  const nested = typeof body.error === 'object' && body.error !== null ? body.error as Record<string, unknown> : undefined
+  const first = Array.isArray(body.errors) && typeof body.errors[0] === 'object' && body.errors[0] !== null ? body.errors[0] as Record<string, unknown> : undefined
+  const source = nested ?? first ?? body
+  const message = textOf(source.message) ?? textOf(body.error) ?? textOf(body.message) ?? textOf(body.msg) ?? textOf(body.detail)
+  if (message === undefined) return undefined
+  const code = textOf(source.code) ?? textOf(source.status) ?? textOf(source.type) ?? textOf(body.code)
+  return code === undefined || message.includes(code) ? message : `${message} (${code})`
+}
+
+/**
+ * Readable, redacted detail for a failed provider response: the message (and
+ * code) of a JSON error body, otherwise the text with whitespace collapsed.
+ * Kept short: it is shown to the user and fed back to the model.
+ */
+export function providerErrorDetail(text: string, ...secrets: Array<string | undefined>): string {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    parsed = undefined
+  }
+  const detail = jsonErrorSummary(parsed) ?? text.replace(/\s+/g, ' ').trim()
+  const redacted = redactSecrets(detail, ...secrets)
+  return redacted.length > DETAIL_LIMIT ? `${redacted.slice(0, DETAIL_LIMIT)}…` : redacted
+}

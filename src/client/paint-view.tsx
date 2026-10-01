@@ -448,7 +448,10 @@ export function PaintView(props: {
           <div className="dig-board-meta" title={selected.prompt}>{selected.providerName ?? selected.providerId} · {selected.model} · {selected.attachment.width}×{selected.attachment.height}</div>
         </>}
       </div>
-      {error !== null && <div className="dig-error" role="alert">{error}</div>}
+      {error !== null && <div className="dig-error dig-board-error" role="alert">
+        <span className="dig-board-error-text">{error}</span>
+        <button type="button" className="dig-icon-btn" title={t('dismiss')} aria-label={t('dismiss')} onClick={() => updateBoard(projectId, { error: null })}><X size={14} /></button>
+      </div>}
       <div className="dig-composer" ref={composerRef}>
         <div
           className="dig-composer-grip"

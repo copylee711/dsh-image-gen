@@ -111,6 +111,8 @@ export const STYLE = String.raw`
 .dig-thumb[aria-current=true]{outline:2px solid var(--dig-accent);outline-offset:1px}
 .dig-thumb .dig-thumb-del{position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:10px;border:0;background:rgba(0,0,0,.55);color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .dig-thumb:hover .dig-thumb-del{display:flex}
+.dig-board-error{display:flex;align-items:flex-start;gap:8px;flex-shrink:0;max-height:96px}
+.dig-board-error-text{flex:1;min-width:0;max-height:78px;overflow:auto}
 .dig-error{margin:0 24px 10px;padding:8px 12px;border-radius:8px;background:color-mix(in srgb,var(--dig-danger) 10%,transparent);color:var(--dig-danger);font-size:12px;line-height:18px;white-space:pre-wrap;word-break:break-word}
 .dig-notice{padding:12px 14px;border-radius:10px;background:var(--dig-side);color:var(--dig-fg2);font-size:12px;line-height:20px}
 .dig-gallery{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}

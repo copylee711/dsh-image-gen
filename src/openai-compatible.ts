@@ -1,6 +1,6 @@
 /** OpenAI Images API and compatible response adapter. */
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
-import { redactSecrets } from './redact.js'
+import { providerErrorDetail, redactSecrets } from './redact.js'
 import { detectImageMediaType } from './reference-image.js'
 import { arkOutputBody, type ArkOutputOptions } from './shared.js'
 import type { FetchLike } from './http.js'
@@ -179,7 +179,7 @@ async function parseImageResponse(
   input: { maxBytes: number; signal: AbortSignal; apiKey?: string; fetch?: FetchLike | undefined },
 ): Promise<GeneratedCompatibleImage> {
   const text = await readBoundedText(response, Math.ceil(input.maxBytes * 1.4) + ERROR_LIMIT)
-  if (!response.ok) throw new Error(`${provider} image request failed (${response.status}): ${redactSecrets(text, input.apiKey).slice(0, ERROR_LIMIT)}`)
+  if (!response.ok) throw new Error(`${provider} image request failed (${response.status}): ${providerErrorDetail(text, input.apiKey)}`)
   let payload: unknown
   try { payload = JSON.parse(text) } catch { throw new Error(`${provider} image request returned invalid JSON`) }
   const image = firstImage(payload)
