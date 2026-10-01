@@ -1,6 +1,6 @@
 {
   "name": "@copylee/dsh-image-gen",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "DeepSeek Harness 生图插件：侧边栏全局画廊（Cherry Studio 式绘画页）、对话生图/编辑、可自定义 Provider 端点与代理。",
   "type": "module",
   "author": "copylee",

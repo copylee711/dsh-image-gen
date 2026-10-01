@@ -135,6 +135,8 @@ export interface SettingsView extends Omit<PluginSettings, 'providers'> {
   providers: ProviderView[]
   /** Folder actually used for image copies (resolved default when imageDir is empty). */
   effectiveImageDir: string
+  /** Host upload limits, so the browser can shrink images before uploading. */
+  imageLimits?: { maxImageBytes: number; maxImageDimension?: number; mediaTypes: string[] }
 }
 
 export const ASPECT_RATIOS = ['1:1', '3:2', '2:3', '4:3', '3:4', '4:5', '5:4', '16:9', '9:16', '21:9'] as const

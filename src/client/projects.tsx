@@ -1,6 +1,6 @@
 /** Gallery project list (own grouping, independent of DSH workspaces). */
 import { useState } from 'react'
-import { Folder, FolderOpen, Images, MessageSquare, MoreHorizontal, Pencil, Plus, Star, Trash2 } from 'lucide-react'
+import { Folder, FolderOpen, Images, LoaderCircle, MessageSquare, MoreHorizontal, Pencil, Plus, Star, Trash2 } from 'lucide-react'
 import { CONVERSATION_PROJECT_ID } from '../gallery-types.js'
 import { api, type ProjectSummary } from './api.js'
 import type { Translate } from './i18n.js'
@@ -10,7 +10,7 @@ import { Menu, Modal, useMenu } from './widgets.js'
 export const ALL_PROJECTS = '__all__'
 export const FAVORITES = '__favorites__'
 
-export function ProjectList({ projects, current, onSelect, onChanged, t, showAll, onError }: {
+export function ProjectList({ projects, current, onSelect, onChanged, t, showAll, onError, busyIds }: {
   projects: readonly ProjectSummary[]
   current: string
   onSelect: (id: string) => void
@@ -19,6 +19,8 @@ export function ProjectList({ projects, current, onSelect, onChanged, t, showAll
   /** Gallery tab: prepend “全部” and “收藏” rows. */
   showAll?: { total: number; favorites: number }
   onError: (message: string) => void
+  /** Projects with a generation running (paint tab). */
+  busyIds?: ReadonlySet<string>
 }) {
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -106,6 +108,7 @@ export function ProjectList({ projects, current, onSelect, onChanged, t, showAll
         >
           {icon}
           <span className="dig-proj-name" title={project.name}>{projectLabel(project, t)}</span>
+          {busyIds?.has(project.id) === true && <LoaderCircle size={13} className="dig-spin dig-proj-busy" aria-label={t('generatingInProject')} />}
           <span className="dig-proj-count">{project.count}</span>
           <button
             type="button"

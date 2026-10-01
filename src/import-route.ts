@@ -19,7 +19,17 @@ interface ImportRequestItem {
 
 const MAX_IMAGES_PER_REQUEST = 8
 
-const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+/**
+ * Strict base64 check in linear time. A regex with a quantified group (the
+ * obvious `^(?:[A-Za-z0-9+/]{4})*…$`) overflows V8's backtracking stack on
+ * multi-megabyte inputs and throws instead of matching.
+ */
+export function isBase64(text: string): boolean {
+  if (text.length % 4 !== 0) return false
+  if (/[^A-Za-z0-9+/=]/.test(text)) return false
+  const pad = text.indexOf('=')
+  return pad === -1 || (pad >= text.length - 2 && /^=+$/.test(text.slice(pad)))
+}
 
 /** base64 inflates bytes by 4/3; allow one full batch plus JSON overhead. */
 function bodyLimit(maxImageBytes: number): number {
@@ -27,6 +37,14 @@ function bodyLimit(maxImageBytes: number): number {
 }
 
 export async function serveImport(req: IncomingMessage, res: ServerResponse, deps: ImportRouteDeps): Promise<void> {
+  try {
+    await handleImport(req, res, deps)
+  } catch {
+    if (!res.headersSent) jsonError(res, 500, 'import-failed')
+  }
+}
+
+async function handleImport(req: IncomingMessage, res: ServerResponse, deps: ImportRouteDeps): Promise<void> {
   if (req.method !== 'POST') return jsonError(res, 405, 'method-not-allowed')
   if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) return jsonError(res, 415, 'json-required')
   const origin = req.headers.origin
@@ -58,7 +76,7 @@ export async function serveImport(req: IncomingMessage, res: ServerResponse, dep
     }
     // Buffer.from silently skips characters outside the base64 alphabet, so the
     // encoded text is validated up front instead of relying on decode failures.
-    if (!BASE64_PATTERN.test(record.data)) {
+    if (!isBase64(record.data)) {
       failures.push({ index, error: 'invalid-base64' })
       continue
     }

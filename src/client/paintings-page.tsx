@@ -10,6 +10,7 @@ import { api, type ProjectSummary } from './api.js'
 import { GalleryView } from './gallery-view.js'
 import { useT, type LocaleService, type Translate } from './i18n.js'
 import { PaintView } from './paint-view.js'
+import { onGalleryChanged, usePaintSession } from './paint-session.js'
 import { ALL_PROJECTS, FAVORITES, ProjectList } from './projects.js'
 import { SettingsPanel } from './settings-view.js'
 import { useToast } from './widgets.js'
@@ -61,6 +62,9 @@ export function PaintingsPage({ locale }: PaintingsPageProps) {
 
   const bump = useCallback(() => setRefreshKey(key => key + 1), [])
   const onError = useCallback((message: string) => setError(message), [])
+  // Jobs finish even while this page is unmounted; refresh when one saves images.
+  useEffect(() => onGalleryChanged(bump), [bump])
+  const session = usePaintSession()
 
   // Projects, the paint tab's history strip and the favorites count.
   useEffect(() => {
@@ -104,7 +108,7 @@ export function PaintingsPage({ locale }: PaintingsPageProps) {
     onChanged={bump}
     t={t}
     onError={onError}
-    {...(gallery ? { showAll: { total, favorites: favoritesCount } } : {})}
+    {...(gallery ? { showAll: { total, favorites: favoritesCount } } : { busyIds: new Set(session.jobs.keys()) })}
   />
 
   const tabButton = (key: Tab, label: string, icon: JSX.Element) => <button type="button" role="tab" className="dig-tab" aria-selected={tab === key} onClick={() => setTab(key)}>{icon}{label}</button>

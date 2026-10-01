@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createServer, type AddressInfo, type Server } from 'node:http'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
-import { serveImport, type ImportRouteDeps } from '../src/import-route.js'
+import { isBase64, serveImport, type ImportRouteDeps } from '../src/import-route.js'
 
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const PNG_BASE64 = Buffer.from(PNG_BYTES).toString('base64')
@@ -176,5 +176,43 @@ describe('import route', () => {
     const { status, payload } = await post(JSON.stringify({ images: [{ data: 'A'.repeat(64 * 1024), mediaType: 'image/png' }] }))
     expect(status).toBe(400)
     expect(payload).toEqual({ error: 'invalid-request' })
+  })
+
+  it('accepts multi-megabyte images (the old base64 regex overflowed the stack)', async () => {
+    deps.maxImageBytes = 8 * 1024 * 1024
+    try {
+      await listen()
+      const big = Buffer.alloc(6 * 1024 * 1024, 7)
+      const { status, payload } = await post({ images: [{ data: big.toString('base64'), mediaType: 'image/png' }] })
+      expect(status).toBe(200)
+      expect((payload as { images: unknown[] }).images).toHaveLength(1)
+      expect(saved[0]!.data.byteLength).toBe(big.byteLength)
+    } finally {
+      deps.maxImageBytes = 1024
+    }
+  })
+
+  it('answers JSON instead of throwing when the handler fails unexpectedly', async () => {
+    const broken = { ...deps, get mediaTypes(): readonly string[] { throw new Error('boom') } }
+    server.removeAllListeners('request')
+    server.on('request', (req, res) => { void serveImport(req, res, broken) })
+    await listen()
+    const { status, payload } = await post({ images: [{ data: PNG_BASE64, mediaType: 'image/png' }] })
+    expect(status).toBe(500)
+    expect(payload).toEqual({ error: 'import-failed' })
+  })
+})
+
+describe('isBase64', () => {
+  it('validates alphabet, length and padding in linear time', () => {
+    expect(isBase64('')).toBe(true)
+    expect(isBase64('QUJD')).toBe(true)
+    expect(isBase64('QUI=')).toBe(true)
+    expect(isBase64('QQ==')).toBe(true)
+    expect(isBase64('QQ=')).toBe(false)
+    expect(isBase64('Q===')).toBe(false)
+    expect(isBase64('QU=D')).toBe(false)
+    expect(isBase64('QU!D')).toBe(false)
+    expect(isBase64('A'.repeat(16 * 1024 * 1024))).toBe(true)
   })
 })

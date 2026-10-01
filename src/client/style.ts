@@ -102,6 +102,9 @@ export const STYLE = String.raw`
 .dig-ref img{width:100%;height:100%;object-fit:cover}
 .dig-ref button{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:9px;border:0;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .dig-history{width:112px;flex:none;border-left:.5px solid var(--dig-border-soft);display:flex;flex-direction:column;min-height:0;background:var(--dig-side)}
+.dig-board:focus{outline:none}
+.dig-new-canvas{margin:4px 12px 0;justify-content:center}
+.dig-proj-busy{flex:none;color:var(--dig-accent)}
 .dig-history-list{flex:1;min-height:0;padding:8px 12px 12px;display:flex;flex-direction:column;gap:8px}
 .dig-thumb{width:100%;aspect-ratio:1;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;border:.5px solid var(--dig-border-soft);background:var(--dig-layer);flex:none;padding:0}
 .dig-thumb img{width:100%;height:100%;object-fit:cover;display:block}

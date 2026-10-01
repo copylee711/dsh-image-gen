@@ -106,11 +106,92 @@ export function fileToBase64(file: Blob): Promise<string> {
   })
 }
 
-/** Upload picked files as durable attachments. */
-export async function uploadFiles(files: readonly File[]): Promise<AttachmentJson[]> {
-  const images = await Promise.all(files.map(async file => ({ data: await fileToBase64(file), mediaType: file.type || 'image/png', name: file.name })))
-  const result = await api.importImages(images)
-  if (result.images.length === 0 && result.failures.length > 0) throw new Error(`上传失败：${result.failures.map(failure => failure.error).join(', ')}`)
+/** Host upload limits as the settings view reports them. */
+export interface UploadLimits {
+  maxImageBytes: number
+  maxImageDimension?: number
+  mediaTypes: readonly string[]
+}
+
+/** Load a blob into a canvas-drawable bitmap (null when the browser cannot decode it). */
+async function decode(blob: Blob): Promise<ImageBitmap | null> {
+  try {
+    return await createImageBitmap(blob)
+  } catch {
+    return null
+  }
+}
+
+function encode(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
+  return new Promise(resolve => canvas.toBlob(resolve, type, quality))
+}
+
+/**
+ * Make one picked/pasted image fit the host's upload limits: an accepted
+ * type, at most `maxImageDimension` per side and `maxImageBytes` in size.
+ * Images that already fit are uploaded untouched; others are redrawn and
+ * re-encoded (WebP when accepted, keeping transparency, else JPEG), shrinking
+ * further until they fit.
+ */
+export async function fitImage(file: Blob, limits: UploadLimits | undefined): Promise<Blob> {
+  if (limits === undefined) return file
+  const typeOk = limits.mediaTypes.includes(file.type)
+  const bytesOk = file.size <= limits.maxImageBytes
+  const maxSide = limits.maxImageDimension
+  const bitmap = typeOk && bytesOk && maxSide === undefined ? null : await decode(file)
+  if (bitmap === null) return file
+  const dimsOk = maxSide === undefined || (bitmap.width <= maxSide && bitmap.height <= maxSide)
+  if (typeOk && bytesOk && dimsOk) {
+    bitmap.close?.()
+    return file
+  }
+  const target = limits.mediaTypes.includes('image/webp') ? 'image/webp' : limits.mediaTypes.includes('image/jpeg') ? 'image/jpeg' : 'image/png'
+  let scale = maxSide === undefined ? 1 : Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
+  let quality = 0.9
+  let best: Blob = file
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+    canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const blob = await encode(canvas, target, quality)
+    if (blob === null) break
+    best = blob
+    if (blob.size <= limits.maxImageBytes) break
+    scale *= 0.8
+    quality = 0.82
+  }
+  bitmap.close?.()
+  return best
+}
+
+/** Human-readable text for the import route's per-image error codes. */
+export function describeUploadError(code: string, limits?: UploadLimits): string {
+  if (code.startsWith('size-out-of-range')) {
+    return limits === undefined ? '图片过大' : `图片过大（上限 ${(limits.maxImageBytes / 1024 / 1024).toFixed(0)} MB）`
+  }
+  if (code.startsWith('unsupported-media-type')) return `不支持的图片格式${code.includes(':') ? `（${code.split(':')[1]!.trim()}）` : ''}`
+  if (code === 'invalid-base64' || code === 'invalid-item') return '图片数据无效'
+  if (code === 'save-failed') return '图片保存失败'
+  return code
+}
+
+/** Upload picked files as durable attachments, shrinking them to the host limits first. */
+export async function uploadFiles(files: readonly File[], limits?: UploadLimits): Promise<AttachmentJson[]> {
+  const images = await Promise.all(files.map(async file => {
+    const blob = await fitImage(file, limits)
+    return { data: await fileToBase64(blob), mediaType: blob.type || 'image/png', name: file.name }
+  }))
+  let result: Awaited<ReturnType<typeof api.importImages>>
+  try {
+    result = await api.importImages(images)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`上传失败：${describeUploadError(message, limits)}`)
+  }
+  if (result.images.length === 0 && result.failures.length > 0) {
+    throw new Error(`上传失败：${[...new Set(result.failures.map(failure => describeUploadError(failure.error, limits)))].join('，')}`)
+  }
   return result.images.map(image => image.attachment)
 }
 

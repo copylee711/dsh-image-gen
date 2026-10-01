@@ -3,7 +3,7 @@
  * middle, the current project's history on the right (Cherry Studio layout).
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { Bookmark, Copy, Download, Eraser, FolderOpen, ImagePlus, LoaderCircle, Maximize2, Palette, Sparkles, Square, Star, Trash2, X } from 'lucide-react'
+import { Bookmark, Copy, Download, Eraser, FolderOpen, ImagePlus, LoaderCircle, Maximize2, Palette, Plus, Sparkles, Square, Star, Trash2, X } from 'lucide-react'
 import type { AttachmentJson, FavoritePrompt, GalleryItem } from '../gallery-types.js'
 import { PROTOCOL_LABELS, capabilitiesOf, effectiveModel, sizeForRatio, type ProviderView, type SettingsView } from '../shared.js'
 import { api, copyImage, downloadImage, imageUrl, uploadFiles } from './api.js'
@@ -11,6 +11,7 @@ import type { Translate } from './i18n.js'
 import { Lightbox } from './lightbox.js'
 import { DEFAULT_RESOLUTION, ResolutionPicker, explicitSize, type ResolutionState } from './resolution.js'
 import { PromptPicker } from './prompt-picker.js'
+import { boardOf, clearBoard, setDraft, startJob, stopJob, updateBoard, usePaintSession } from './paint-session.js'
 import { Select } from './select.js'
 import { RatioGlyph } from './widgets.js'
 
@@ -108,12 +109,28 @@ export function PaintView(props: {
     negative: initial.negative ?? '',
     sizes: typeof initial.sizes === 'object' && initial.sizes !== null ? initial.sizes : {},
   }))
-  const [prompt, setPrompt] = useState('')
-  const [references, setReferences] = useState<AttachmentJson[]>([])
-  const [busy, setBusy] = useState<{ count: number; controller: AbortController } | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [currentBatch, setCurrentBatch] = useState<GalleryItem[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Draft, artboard and running job live in the session store so they
+  // survive this view unmounting (leaving the page or switching tabs).
+  const session = usePaintSession()
+  const projectId = props.projectId
+  const board = boardOf(session, projectId)
+  const busy = session.jobs.get(projectId) ?? null
+  const prompt = session.draft.prompt
+  const references = session.draft.references
+  const error = board.error
+  const currentBatch = board.batch
+  const selectedId = board.selectedId
+  const setPrompt = (next: string | ((current: string) => string)): void => setDraft(draft => ({ prompt: typeof next === 'function' ? next(draft.prompt) : next }))
+  const setReferences = (next: (current: AttachmentJson[]) => AttachmentJson[]): void => setDraft(draft => ({ references: next(draft.references) }))
+  const setCurrentBatch = (next: GalleryItem[] | ((current: GalleryItem[]) => GalleryItem[])): void => updateBoard(projectId, current => ({ batch: typeof next === 'function' ? next(current.batch) : next }))
+  const setSelectedId = (id: string | null): void => updateBoard(projectId, { selectedId: id })
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    if (busy === null) return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [busy])
   const [lightbox, setLightbox] = useState<number | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const promptRef = useRef<HTMLTextAreaElement>(null)
@@ -196,11 +213,6 @@ export function PaintView(props: {
     if (injected.reference !== undefined) addReference(injected.reference)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.injected])
-  // A new project starts with an empty artboard.
-  useEffect(() => {
-    setCurrentBatch([])
-    setSelectedId(null)
-  }, [props.projectId])
 
   const update = (patch: Partial<ParamState>): void => setParams(current => ({ ...current, ...patch }))
   const selectProvider = (id: string): void => {
@@ -219,7 +231,7 @@ export function PaintView(props: {
       return
     }
     try {
-      const uploaded = await uploadFiles(images)
+      const uploaded = await uploadFiles(images, settings?.imageLimits)
       setReferences(current => [...current, ...uploaded].slice(-caps.maxReferences))
     } catch (failure) {
       props.onError(failure instanceof Error ? failure.message : String(failure))
@@ -236,38 +248,35 @@ export function PaintView(props: {
   const generate = async (): Promise<void> => {
     const text = prompt.trim()
     if (text.length === 0 || provider === undefined || busy !== null) return
-    const controller = new AbortController()
     const count = Math.min(params.count, caps?.maxCount ?? 1)
-    setBusy({ count, controller })
-    setError(null)
     const tier = caps?.tiers.includes(params.tier) === true ? params.tier : caps?.tiers[0]
     const seed = Number(params.seed)
     const size = explicitSize(caps, params.ratio, resolution)
-    try {
-      const result = await api.paint({
-        providerId: provider.id,
-        ...(model.length > 0 ? { model } : {}),
-        prompt: text,
-        ...(params.negative.trim().length > 0 ? { negativePrompt: params.negative.trim() } : {}),
-        ...(caps !== undefined && caps.ratios.includes(params.ratio) ? { aspectRatio: params.ratio } : {}),
-        ...(tier === undefined ? {} : { imageSize: tier }),
-        ...(size === undefined ? {} : { size }),
-        ...((provider.protocol === 'openai' || provider.protocol === 'openai-compat') && params.quality !== 'auto' ? { quality: params.quality } : {}),
-        ...(params.seed.trim().length > 0 && Number.isSafeInteger(seed) ? { seed } : {}),
-        count,
-        references,
-        projectId: props.projectId,
-      }, controller.signal)
-      setCurrentBatch(result.items)
-      setSelectedId(result.items[0]?.id ?? null)
-      if (result.failures.length > 0) setError(t('failedN', { n: result.failures.length, error: result.failures[0] ?? '' }))
-      props.onGalleryChanged()
-    } catch (failure) {
-      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : String(failure))
-    } finally {
-      setBusy(null)
-    }
+    await startJob({
+      providerId: provider.id,
+      ...(model.length > 0 ? { model } : {}),
+      prompt: text,
+      ...(params.negative.trim().length > 0 ? { negativePrompt: params.negative.trim() } : {}),
+      ...(caps !== undefined && caps.ratios.includes(params.ratio) ? { aspectRatio: params.ratio } : {}),
+      ...(tier === undefined ? {} : { imageSize: tier }),
+      ...(size === undefined ? {} : { size }),
+      ...((provider.protocol === 'openai' || provider.protocol === 'openai-compat') && params.quality !== 'auto' ? { quality: params.quality } : {}),
+      ...(params.seed.trim().length > 0 && Number.isSafeInteger(seed) ? { seed } : {}),
+      count,
+      references,
+      projectId,
+    }, { describeFailures: failures => t('failedN', { n: failures.length, error: failures[0] ?? '' }) })
   }
+
+  /** Back to an empty canvas with a fresh composer (the running job, if any, keeps going). */
+  const newCanvas = (): void => {
+    clearBoard(projectId)
+    setDraft({ prompt: '', references: [] })
+    setLightbox(null)
+    promptRef.current?.focus()
+  }
+  /** Deselect: empty canvas, keep the draft. */
+  const deselect = (): void => updateBoard(projectId, { batch: [], selectedId: null })
 
   const act = {
     download: (item: GalleryItem) => { void downloadImage(item.attachment, `copylee-image-${item.id.slice(0, 8)}`).catch((failure: unknown) => props.onError(String(failure))) },
@@ -291,6 +300,11 @@ export function PaintView(props: {
   }
 
   const lightboxItems = currentBatch.length > 0 ? currentBatch : [...history]
+  /** Show a history image; clicking the one already shown deselects it. */
+  const pickHistory = (id: string): void => {
+    if (busy === null && selected?.id === id) deselect()
+    else updateBoard(projectId, { batch: [], selectedId: id })
+  }
 
   return <>
     <aside className="dig-side">
@@ -396,11 +410,20 @@ export function PaintView(props: {
         void addReferenceFiles([...event.dataTransfer.files])
       }}
     >
-      <div className="dig-board">
+      <div
+        className="dig-board"
+        tabIndex={-1}
+        onKeyDown={event => {
+          if (event.key === 'Escape' && lightbox === null && !pickerOpen && selected !== undefined) {
+            event.preventDefault()
+            deselect()
+          }
+        }}
+      >
         {busy !== null
           ? <div className="dig-board-grid" style={busy.count === 1 ? { gridTemplateColumns: 'minmax(0,1fr)', maxWidth: 520, maxHeight: 520 } : undefined}>
             {Array.from({ length: busy.count }, (_, index) => <div key={index} className="dig-board-cell dig-skeleton">
-              {index === 0 && <div className="dig-busy"><LoaderCircle size={22} className="dig-spin" />{t('generating')}</div>}
+              {index === 0 && <div className="dig-busy"><LoaderCircle size={22} className="dig-spin" />{t('generating')}<span className="dig-hint">{t('elapsed', { s: Math.max(0, Math.round((now - busy.startedAt) / 1000)) })}</span></div>}
             </div>)}
           </div>
           : selected === undefined
@@ -482,7 +505,7 @@ export function PaintView(props: {
           <button type="button" className="dig-icon-btn" title={t('clearPrompt')} aria-label={t('clearPrompt')} disabled={prompt.length === 0} onClick={() => { setPrompt(''); promptRef.current?.focus() }}><Eraser size={16} /></button>
           <span className="dig-spacer" />
           {busy !== null
-            ? <button type="button" className="dig-btn" onClick={() => busy.controller.abort()}><Square size={12} fill="currentColor" />{t('stop')}</button>
+            ? <button type="button" className="dig-btn" onClick={() => stopJob(projectId)}><Square size={12} fill="currentColor" />{t('stop')}</button>
             : <button type="button" className="dig-btn dig-btn-primary" disabled={prompt.trim().length === 0 || provider === undefined} onClick={() => { void generate() }}><Sparkles size={14} />{t('generate')}</button>}
         </div>
       </div>
@@ -490,6 +513,7 @@ export function PaintView(props: {
 
     <aside className="dig-history" aria-label={t('history')}>
       <div className="dig-section-title" style={{ padding: '12px 14px 4px' }}><span>{t('history')}</span><span>{history.length}</span></div>
+      <button type="button" className="dig-btn dig-btn-sm dig-new-canvas" title={t('newCanvasHint')} onClick={newCanvas}><Plus size={14} />{t('newCanvas')}</button>
       <div className="dig-history-list dig-scroll">
         {history.map(item => <div
           key={item.id}
@@ -498,11 +522,8 @@ export function PaintView(props: {
           tabIndex={0}
           title={item.prompt}
           aria-current={selected?.id === item.id}
-          onClick={() => {
-            setCurrentBatch([])
-            setSelectedId(item.id)
-          }}
-          onKeyDown={event => { if (event.key === 'Enter') { setCurrentBatch([]); setSelectedId(item.id) } }}
+          onClick={() => pickHistory(item.id)}
+          onKeyDown={event => { if (event.key === 'Enter') pickHistory(item.id) }}
         >
           <img src={imageUrl(item.attachment)} alt="" loading="lazy" />
           <button type="button" className="dig-thumb-del" aria-label={t('delete')} onClick={event => { event.stopPropagation(); act.remove(item) }}><X size={12} /></button>

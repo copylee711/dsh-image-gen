@@ -112,7 +112,20 @@ export function apply(ctx: Context, config: Config = {}): void {
   const services: PluginServices = { settings, keys, gallery, attachments: ctx.attachments, dataDir }
 
   const route = (kind: 'exact' | 'prefix', path: string, handler: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<void>): void => {
-    ctx.effect(() => ctx.webServer.register({ kind, path, handler }), `${PLUGIN_SLUG}: ${path}`)
+    // Never let a throw reach the host server: it answers a bare, body-less 400.
+    const safe = async (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse): Promise<void> => {
+      try {
+        await handler(req, res)
+      } catch (error) {
+        if (res.headersSent) {
+          res.destroy()
+          return
+        }
+        res.writeHead(500, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
+      }
+    }
+    ctx.effect(() => ctx.webServer.register({ kind, path, handler: safe }), `${PLUGIN_SLUG}: ${path}`)
   }
   route('exact', IMAGE_ROUTE, imageRoute(services))
   route('exact', IMPORT_ROUTE, (req, res) => serveImport(req, res, {

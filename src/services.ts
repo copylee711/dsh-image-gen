@@ -11,7 +11,7 @@ import { requireProvider } from './settings-store.js'
 import type { ProviderEntry, SettingsView } from './shared.js'
 
 export interface AttachmentService {
-  readonly imageLimits: { maxImageBytes: number; mediaTypes: readonly string[] }
+  readonly imageLimits: { maxImageBytes: number; maxImageDimension?: number; mediaTypes: readonly string[] }
   saveImage(input: { data: Uint8Array; mediaType: ImageMediaType; name?: string }): Promise<ImageAttachmentRef>
   readImage(ref: ImageAttachmentRef, signal?: AbortSignal): Promise<StoredImageAttachment>
 }
@@ -36,7 +36,17 @@ export async function settingsView(services: PluginServices): Promise<SettingsVi
     ...entry,
     keyConfigured: await services.keys.get(entry.id).then(value => value !== undefined, () => false),
   })))
-  return { ...settings, providers, effectiveImageDir: resolveImageDir(settings.imageDir, services.dataDir) }
+  const limits = services.attachments.imageLimits
+  return {
+    ...settings,
+    providers,
+    effectiveImageDir: resolveImageDir(settings.imageDir, services.dataDir),
+    imageLimits: {
+      maxImageBytes: limits.maxImageBytes,
+      ...(limits.maxImageDimension === undefined ? {} : { maxImageDimension: limits.maxImageDimension }),
+      mediaTypes: [...limits.mediaTypes],
+    },
+  }
 }
 
 /** The folder image copies currently go to. */

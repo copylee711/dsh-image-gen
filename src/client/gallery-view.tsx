@@ -83,7 +83,7 @@ export function GalleryView(props: {
   }
   const importFiles = async (files: File[]): Promise<void> => {
     try {
-      const attachments = await uploadFiles(files.filter(file => file.type.startsWith('image/')))
+      const attachments = await uploadFiles(files.filter(file => file.type.startsWith('image/')), props.settings?.imageLimits)
       const target = filter === ALL_PROJECTS || filter === FAVORITES ? DEFAULT_PROJECT_ID : filter
       await api.gallery.importAttachments(attachments, target)
       after()
