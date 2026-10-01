@@ -2,13 +2,15 @@
  * The “绘画” tab: parameters on the left, artboard + prompt composer in the
  * middle, the current project's history on the right (Cherry Studio layout).
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { Bookmark, Copy, Download, ImagePlus, LoaderCircle, Maximize2, Palette, Sparkles, Square, Star, Trash2, X } from 'lucide-react'
-import type { AttachmentJson, GalleryItem } from '../gallery-types.js'
-import { PROTOCOL_LABELS, capabilitiesOf, effectiveModel, type ProviderView, type SettingsView } from '../shared.js'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { Bookmark, Copy, Download, Eraser, FolderOpen, ImagePlus, LoaderCircle, Maximize2, Palette, Sparkles, Square, Star, Trash2, X } from 'lucide-react'
+import type { AttachmentJson, FavoritePrompt, GalleryItem } from '../gallery-types.js'
+import { PROTOCOL_LABELS, capabilitiesOf, effectiveModel, sizeForRatio, type ProviderView, type SettingsView } from '../shared.js'
 import { api, copyImage, downloadImage, imageUrl, uploadFiles } from './api.js'
 import type { Translate } from './i18n.js'
 import { Lightbox } from './lightbox.js'
+import { DEFAULT_RESOLUTION, ResolutionPicker, explicitSize, type ResolutionState } from './resolution.js'
+import { PromptPicker } from './prompt-picker.js'
 import { Select } from './select.js'
 import { RatioGlyph } from './widgets.js'
 
@@ -49,6 +51,8 @@ interface ParamState {
   count: number
   seed: string
   negative: string
+  /** Resolution choice per provider id. */
+  sizes: Record<string, ResolutionState>
 }
 
 function loadParams(): Partial<ParamState> {
@@ -87,6 +91,8 @@ export function PaintView(props: {
   /** Prompt / reference handed over from another tab. */
   injected: { text?: string; reference?: AttachmentJson; nonce: number } | null
   sideTop: JSX.Element
+  /** Bumps when gallery data (incl. saved prompts) changes elsewhere. */
+  refreshKey: number
 }) {
   const { t, settings, history } = props
   const providers = useMemo(() => readyProviders(settings), [settings])
@@ -100,6 +106,7 @@ export function PaintView(props: {
     count: initial.count ?? 1,
     seed: '',
     negative: initial.negative ?? '',
+    sizes: typeof initial.sizes === 'object' && initial.sizes !== null ? initial.sizes : {},
   }))
   const [prompt, setPrompt] = useState('')
   const [references, setReferences] = useState<AttachmentJson[]>([])
@@ -110,6 +117,24 @@ export function PaintView(props: {
   const [lightbox, setLightbox] = useState<number | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const promptRef = useRef<HTMLTextAreaElement>(null)
+  const composerRef = useRef<HTMLDivElement>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [savedPrompts, setSavedPrompts] = useState<FavoritePrompt[]>([])
+  const reloadPrompts = useCallback(() => {
+    api.gallery.favoritePrompts().then(result => setSavedPrompts(result.prompts), () => {})
+  }, [])
+  useEffect(reloadPrompts, [reloadPrompts, props.refreshKey])
+  const promptSaved = prompt.trim().length > 0 && savedPrompts.some(entry => entry.text === prompt.trim())
+  const usePrompt = (text: string, mode: 'replace' | 'append'): void => {
+    setPrompt(current => mode === 'append' && current.trim().length > 0 ? `${current.replace(/\s+$/, '')}\n${text}` : text)
+    setPickerOpen(false)
+    requestAnimationFrame(() => {
+      const area = promptRef.current
+      if (area === null) return
+      area.focus()
+      area.setSelectionRange(area.value.length, area.value.length)
+    })
+  }
   // Height fixed by dragging the grip; null = auto-grow.
   const [composerCap, setComposerCap] = useState<number | null>(loadComposerCap)
 
@@ -155,6 +180,12 @@ export function PaintView(props: {
     ?? providers.find(entry => entry.id === settings?.activeProvider)
     ?? providers[0]
   const caps = provider === undefined ? undefined : capabilitiesOf(provider)
+  const resolution: ResolutionState = { ...DEFAULT_RESOLUTION, ...(provider === undefined ? {} : params.sizes[provider.id]) }
+  const setResolution = (next: ResolutionState): void => {
+    if (provider === undefined) return
+    setParams(current => ({ ...current, sizes: { ...current.sizes, [provider.id]: next } }))
+  }
+  const freeRatio = resolution.res === 'custom' && !resolution.lock && caps?.customSize !== undefined
   const model = provider === undefined ? '' : params.providerId === provider.id && params.model.length > 0 ? params.model : effectiveModel(provider)
 
   useEffect(() => { saveParams(params) }, [params])
@@ -211,6 +242,7 @@ export function PaintView(props: {
     setError(null)
     const tier = caps?.tiers.includes(params.tier) === true ? params.tier : caps?.tiers[0]
     const seed = Number(params.seed)
+    const size = explicitSize(caps, params.ratio, resolution)
     try {
       const result = await api.paint({
         providerId: provider.id,
@@ -219,6 +251,7 @@ export function PaintView(props: {
         ...(params.negative.trim().length > 0 ? { negativePrompt: params.negative.trim() } : {}),
         ...(caps !== undefined && caps.ratios.includes(params.ratio) ? { aspectRatio: params.ratio } : {}),
         ...(tier === undefined ? {} : { imageSize: tier }),
+        ...(size === undefined ? {} : { size }),
         ...((provider.protocol === 'openai' || provider.protocol === 'openai-compat') && params.quality !== 'auto' ? { quality: params.quality } : {}),
         ...(params.seed.trim().length > 0 && Number.isSafeInteger(seed) ? { seed } : {}),
         count,
@@ -244,6 +277,9 @@ export function PaintView(props: {
         setCurrentBatch(batch => batch.map(entry => entry.id === item.id ? { ...entry, favorite: !item.favorite } : entry))
         props.onGalleryChanged()
       })
+    },
+    reveal: (item: GalleryItem) => {
+      void api.gallery.reveal(item.id).then(result => props.toast(t('revealedAt', { path: result.path })), (failure: unknown) => props.onError(failure instanceof Error ? failure.message : String(failure)))
     },
     remove: (item: GalleryItem) => {
       void api.gallery.remove([item.id]).then(() => {
@@ -291,7 +327,13 @@ export function PaintView(props: {
             {caps !== undefined && caps.ratios.length > 0 && <div className="dig-field">
               <span className="dig-label">{t('ratio')}</span>
               <div className="dig-chips" role="group" aria-label={t('ratio')}>
-                {caps.ratios.map(ratio => <button key={ratio} type="button" className="dig-chip" aria-pressed={params.ratio === ratio} onClick={() => update({ ratio })}>
+                {caps.ratios.map(ratio => <button key={ratio} type="button" className="dig-chip" aria-pressed={!freeRatio && params.ratio === ratio} onClick={() => {
+                  update({ ratio })
+                  if (resolution.res === 'custom' && caps.customSize !== undefined) {
+                    const fitted = sizeForRatio(ratio, Math.max(resolution.w, resolution.h), caps.customSize.step, caps.customSize)
+                    setResolution({ ...resolution, lock: true, w: fitted.width, h: fitted.height })
+                  }
+                }}>
                   <RatioGlyph ratio={ratio} />{ratio}
                 </button>)}
               </div>
@@ -302,6 +344,7 @@ export function PaintView(props: {
                 {caps.tiers.map(tier => <button key={tier} type="button" className="dig-chip" aria-pressed={(caps.tiers.includes(params.tier) ? params.tier : caps.tiers[0]) === tier} onClick={() => update({ tier })}>{tier}</button>)}
               </div>
             </div>}
+            {caps?.customSize !== undefined && <ResolutionPicker t={t} caps={caps} ratio={caps.ratios.includes(params.ratio) ? params.ratio : caps.ratios[0] ?? '1:1'} value={resolution} onChange={setResolution} />}
             {(provider?.protocol === 'openai' || provider?.protocol === 'openai-compat') && <div className="dig-field">
               <span className="dig-label">{t('quality')}</span>
               <div className="dig-chips" role="group" aria-label={t('quality')}>
@@ -375,6 +418,7 @@ export function PaintView(props: {
             <button type="button" className="dig-icon-btn" title={selected.favorite ? t('unfavorite') : t('favorite')} aria-pressed={selected.favorite} onClick={() => act.favorite(selected)}><Star size={16} fill={selected.favorite ? '#f5a623' : 'none'} /></button>
             <button type="button" className="dig-icon-btn" title={t('copy')} onClick={() => act.copy(selected)}><Copy size={16} /></button>
             <button type="button" className="dig-icon-btn" title={t('download')} onClick={() => act.download(selected)}><Download size={16} /></button>
+            <button type="button" className="dig-icon-btn" title={t('revealInFolder')} onClick={() => act.reveal(selected)}><FolderOpen size={16} /></button>
             <button type="button" className="dig-icon-btn" title="Zoom" onClick={() => setLightbox(Math.max(0, lightboxItems.findIndex(item => item.id === selected.id)))}><Maximize2 size={16} /></button>
             <button type="button" className="dig-icon-btn" title={t('delete')} onClick={() => act.remove(selected)}><Trash2 size={16} /></button>
           </div>
@@ -382,7 +426,7 @@ export function PaintView(props: {
         </>}
       </div>
       {error !== null && <div className="dig-error" role="alert">{error}</div>}
-      <div className="dig-composer">
+      <div className="dig-composer" ref={composerRef}>
         <div
           className="dig-composer-grip"
           role="separator"
@@ -424,16 +468,19 @@ export function PaintView(props: {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault()
               void generate()
+            } else if ((event.key === '/' && prompt.length === 0) || (event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey))) {
+              event.preventDefault()
+              setPickerOpen(true)
             }
           }}
         />
         <div className="dig-composer-row">
           <button type="button" className="dig-icon-btn" title={t('addReference')} disabled={caps === undefined || caps.maxReferences === 0} onClick={() => fileInput.current?.click()}><ImagePlus size={16} /></button>
-          <button type="button" className="dig-icon-btn" title={t('savePrompt')} disabled={prompt.trim().length === 0} onClick={() => {
-            void api.gallery.addFavoritePrompt(prompt).then(() => props.toast(t('promptSaved')), (failure: unknown) => props.onError(String(failure)))
-          }}><Bookmark size={16} /></button>
+          <button type="button" className="dig-icon-btn dig-bookmark-btn" title={t('openPromptPicker')} aria-label={t('openPromptPicker')} aria-expanded={pickerOpen} aria-pressed={promptSaved} onClick={() => setPickerOpen(open => !open)}>
+            <Bookmark size={16} fill={promptSaved ? 'currentColor' : 'none'} />
+          </button>
+          <button type="button" className="dig-icon-btn" title={t('clearPrompt')} aria-label={t('clearPrompt')} disabled={prompt.length === 0} onClick={() => { setPrompt(''); promptRef.current?.focus() }}><Eraser size={16} /></button>
           <span className="dig-spacer" />
-          <span className="dig-hint">{provider === undefined ? '' : `${provider.name} · ${model}`}</span>
           {busy !== null
             ? <button type="button" className="dig-btn" onClick={() => busy.controller.abort()}><Square size={12} fill="currentColor" />{t('stop')}</button>
             : <button type="button" className="dig-btn dig-btn-primary" disabled={prompt.trim().length === 0 || provider === undefined} onClick={() => { void generate() }}><Sparkles size={14} />{t('generate')}</button>}
@@ -463,6 +510,16 @@ export function PaintView(props: {
       </div>
     </aside>
 
+    {pickerOpen && composerRef.current !== null && <PromptPicker
+      t={t}
+      anchor={composerRef.current}
+      prompt={prompt}
+      prompts={savedPrompts}
+      onReload={reloadPrompts}
+      onUse={usePrompt}
+      onClose={() => setPickerOpen(false)}
+      onError={props.onError}
+    />}
     {lightbox !== null && <Lightbox
       items={lightboxItems}
       index={lightbox}
@@ -471,6 +528,7 @@ export function PaintView(props: {
       t={t}
       actions={{
         onDownload: act.download,
+        onReveal: act.reveal,
         onCopy: act.copy,
         onFavorite: act.favorite,
         onDelete: item => { act.remove(item); setLightbox(null) },

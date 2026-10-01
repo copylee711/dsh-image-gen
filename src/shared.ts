@@ -114,6 +114,8 @@ export interface PluginSettings {
   /** Also write images generated in a conversation under that session's workspace. */
   saveToWorkspace: boolean
   workspaceFolder: string
+  /** Folder for readable gallery image copies; '' = `<dataDir>/images`. */
+  imageDir: string
 }
 
 /** Provider entry as the browser sees it: adds key state, never the key. */
@@ -123,6 +125,8 @@ export interface ProviderView extends ProviderEntry {
 
 export interface SettingsView extends Omit<PluginSettings, 'providers'> {
   providers: ProviderView[]
+  /** Folder actually used for image copies (resolved default when imageDir is empty). */
+  effectiveImageDir: string
 }
 
 export const ASPECT_RATIOS = ['1:1', '3:2', '2:3', '4:3', '3:4', '4:5', '5:4', '16:9', '9:16', '21:9'] as const
@@ -225,6 +229,7 @@ export function defaultSettings(): PluginSettings {
     proxy: { enabled: false, url: '', noProxy: ['localhost', '127.0.0.1', '::1'] },
     saveToWorkspace: true,
     workspaceFolder: PLUGIN_SLUG,
+    imageDir: '',
   }
 }
 
@@ -255,6 +260,51 @@ export interface ProtocolCapabilities {
   maxReferences: number
   /** Max images per request the paintings page may ask for. */
   maxCount: number
+  /** Explicit `WxH` sizes the protocol accepts; absent = ratio/tier only. */
+  customSize?: SizeRange
+}
+
+/** Pixel bounds and alignment for explicit `WxH` sizes. */
+export interface SizeRange {
+  min: number
+  max: number
+  step: number
+}
+
+/** Long-side presets offered next to the standard size. */
+export const RESOLUTION_PRESETS = [
+  { id: '1k', label: '1K', longSide: 1024 },
+  { id: '1.5k', label: '1.5K', longSide: 1536 },
+  { id: '2k', label: '2K', longSide: 2048 },
+] as const
+
+/** Clamp one dimension into the range and onto the step grid. */
+export function clampDimension(value: number, range: SizeRange): number {
+  const safe = Number.isFinite(value) ? value : range.min
+  const stepped = Math.round(safe / range.step) * range.step
+  return Math.min(Math.floor(range.max / range.step) * range.step, Math.max(Math.ceil(range.min / range.step) * range.step, stepped))
+}
+
+/**
+ * `WxH` for an aspect ratio and a long side, both dimensions aligned to
+ * `step` (and clamped into `range` when given): 16:9 @ 2048 / 16 → 2048x1152.
+ */
+export function sizeForRatio(ratio: string, longSide: number, step: number, range?: SizeRange): { width: number; height: number } {
+  const [rw, rh] = ratio.split(':').map(Number)
+  const w = rw !== undefined && rw > 0 ? rw : 1
+  const h = rh !== undefined && rh > 0 ? rh : 1
+  const scale = longSide / Math.max(w, h)
+  const align = (value: number): number => {
+    const aligned = Math.max(step, Math.round(value / step) * step)
+    return range === undefined ? aligned : clampDimension(aligned, range)
+  }
+  return { width: align(w * scale), height: align(h * scale) }
+}
+
+/** Parse `WxH` / `W*H`; undefined when malformed. */
+export function parseSize(value: string | undefined): { width: number; height: number } | undefined {
+  const match = /^\s*(\d{2,5})\s*[x*×]\s*(\d{2,5})\s*$/i.exec(value ?? '')
+  return match === null ? undefined : { width: Number(match[1]), height: Number(match[2]) }
 }
 
 const OPENAI_SIZES: Record<string, string> = { '1:1': '1024x1024', '3:2': '1536x1024', '2:3': '1024x1536' }
@@ -264,24 +314,24 @@ const SQUARE_FAMILY_SIZES: Record<string, string> = {
 
 export const PROTOCOL_CAPABILITIES: Record<ProviderProtocol, ProtocolCapabilities> = {
   gemini: { ratios: ASPECT_RATIOS, tiers: IMAGE_SIZES, maxReferences: 14, maxCount: 4 },
-  openai: { ratios: Object.keys(OPENAI_SIZES), tiers: [], sizes: OPENAI_SIZES, maxReferences: 16, maxCount: 4 },
-  'openai-compat': { ratios: Object.keys(OPENAI_SIZES), tiers: [], sizes: OPENAI_SIZES, maxReferences: 16, maxCount: 4 },
-  modelscope: { ratios: Object.keys(SQUARE_FAMILY_SIZES), tiers: [], sizes: SQUARE_FAMILY_SIZES, maxReferences: 1, maxCount: 4 },
-  siliconflow: { ratios: Object.keys(SQUARE_FAMILY_SIZES), tiers: [], sizes: SQUARE_FAMILY_SIZES, maxReferences: 1, maxCount: 4 },
+  openai: { ratios: Object.keys(OPENAI_SIZES), tiers: [], sizes: OPENAI_SIZES, maxReferences: 16, maxCount: 4, customSize: { min: 256, max: 4096, step: 16 } },
+  'openai-compat': { ratios: Object.keys(OPENAI_SIZES), tiers: [], sizes: OPENAI_SIZES, maxReferences: 16, maxCount: 4, customSize: { min: 256, max: 4096, step: 16 } },
+  modelscope: { ratios: Object.keys(SQUARE_FAMILY_SIZES), tiers: [], sizes: SQUARE_FAMILY_SIZES, maxReferences: 1, maxCount: 4, customSize: { min: 64, max: 2048, step: 16 } },
+  siliconflow: { ratios: Object.keys(SQUARE_FAMILY_SIZES), tiers: [], sizes: SQUARE_FAMILY_SIZES, maxReferences: 1, maxCount: 4, customSize: { min: 256, max: 2048, step: 32 } },
   seedream: {
     ratios: ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'], tiers: ['2K', '4K'],
-    maxReferences: 10, maxCount: 4,
+    maxReferences: 10, maxCount: 4, customSize: { min: 1024, max: 4096, step: 16 },
   },
   dashscope: {
     ratios: ['1:1', '4:3', '3:4', '16:9', '9:16'], tiers: [],
     sizes: { '1:1': '1328*1328', '4:3': '1472*1104', '3:4': '1104*1472', '16:9': '1664*928', '9:16': '928*1664' },
-    maxReferences: 3, maxCount: 4,
+    maxReferences: 3, maxCount: 4, customSize: { min: 512, max: 2048, step: 16 },
   },
   xai: { ratios: ['1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16', '21:9'], tiers: ['1K', '2K'], maxReferences: 5, maxCount: 4 },
   zhipu: {
     ratios: ['1:1', '4:3', '3:4', '16:9', '9:16'], tiers: [],
     sizes: { '1:1': '1024x1024', '4:3': '1152x864', '3:4': '864x1152', '16:9': '1344x768', '9:16': '768x1344' },
-    maxReferences: 0, maxCount: 4,
+    maxReferences: 0, maxCount: 4, customSize: { min: 512, max: 2048, step: 32 },
   },
 }
 

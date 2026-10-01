@@ -73,6 +73,12 @@ pnpm dsh plugin --profile web add git+https://github.com/copylee711/dsh-image-ge
 
 每次请求时，插件会往系统上下文里注入一小段说明，列出已配置 Key 的服务商（id、模型、是否支持编辑），这样 Agent 就知道可以生图、也能按用户要求指定服务商。
 
+## 分辨率、收藏 Prompt 与本地文件
+
+- **分辨率**：ModelScope、硅基流动、OpenAI 系、DashScope、智谱、Seedream 可以在「标准 / 1K / 1.5K / 2K / 自定义宽×高」之间选择。自定义尺寸会按各服务商允许的范围和步长自动对齐；Gemini、xAI 仍然用清晰度档位。
+- **收藏 Prompt**：点输入框的书签按钮，或在空输入框里按 `/`、`Ctrl/⌘+K`，弹出收藏列表：点击替换、Shift+Enter 追加，还能收藏或取消收藏当前 Prompt。「收藏 Prompt」页签里可以直接编辑。
+- **本地文件**：每张图在「图片保存目录」（默认 `~/.dsh/storages/copylee-image-gen/images/`，可在设置里修改）保存一份带可读文件名的副本，按月份分文件夹。画板工具栏和大图查看器里的「在文件夹中显示」会在资源管理器 / 访达中定位到该文件。
+
 ## 数据与隐私
 
 - API Key 存在 DSH 凭据库里（记录名为 `copylee-image-gen/<服务商 id>`），浏览器端永远拿不到明文。宿主不支持记录 API 时，会退回到权限为 0600 的 `keys.json`。

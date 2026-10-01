@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { existsSync, rmSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { fileKeyStore } from '../src/credentials.js'
@@ -20,6 +21,7 @@ let base: string
 let services: PluginServices
 let net: ReturnType<typeof scriptedFetch>
 let saved = 0
+let launched: string[][] = []
 
 function fakeAttachments(): PluginServices['attachments'] {
   const store = new Map<string, Uint8Array>()
@@ -46,7 +48,8 @@ beforeEach(async () => {
     if (url.endsWith('/images/generations')) return json({ images: [{ url: 'https://cdn.example/x.png' }] })
     return png()
   })
-  services = { settings: new SettingsStore(dir), keys: fileKeyStore(dir), gallery: new GalleryDb(dir), attachments: fakeAttachments(), fetch: net.fetch }
+  launched = []
+  services = { settings: new SettingsStore(dir), keys: fileKeyStore(dir), gallery: new GalleryDb(dir), attachments: fakeAttachments(), fetch: net.fetch, dataDir: dir, launch: (command, args) => { launched.push([command, ...args]) } }
   const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> = {
     '/settings': settingsRoute(services), '/key': keyRoute(services), '/test': testRoute(services),
     '/models': modelsRoute(services), '/paint': paintRoute(services), '/gallery': galleryRoute(services),
@@ -116,6 +119,36 @@ describe('routes', () => {
     const result = await post('/paint', { providerId: 'modelscope', prompt: 'a cat', count: 1, references: [] })
     expect(result.status).toBe(502)
     expect(result.body.error).toMatch(/API Key/)
+  })
+
+  it('keeps readable image copies, reveals them and cleans them up', async () => {
+    await post('/key', { providerId: 'modelscope', key: 'ms-key-123456' })
+    const result = await post('/paint', { providerId: 'modelscope', prompt: '草莓 ice cream!', count: 1, references: [] })
+    const item = result.body.items[0]
+    expect(item.filePath).toMatch(new RegExp(`^${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[/\\\\]images[/\\\\]\\d{4}-\\d{2}[/\\\\]\\d{8}-\\d{6}-草莓-ice-cream-0{8}\\.png$`))
+    expect(existsSync(item.filePath)).toBe(true)
+    const revealed = await post('/gallery', { op: 'reveal', id: item.id })
+    expect(revealed.body.path).toBe(item.filePath)
+    expect(launched.at(-1)?.join(' ')).toContain(process.platform === 'darwin' ? item.filePath : dirname(item.filePath))
+    const folder = await post('/gallery', { op: 'openFolder' })
+    expect(folder.body.path).toBe(join(dir, 'images'))
+    // A copy deleted on disk is rewritten on reveal.
+    rmSync(item.filePath)
+    await post('/gallery', { op: 'reveal', id: item.id })
+    expect(existsSync(item.filePath)).toBe(true)
+    await post('/gallery', { op: 'remove', ids: [item.id] })
+    expect(existsSync(item.filePath)).toBe(false)
+    expect((await post('/gallery', { op: 'reveal', id: 'missing' })).status).toBe(404)
+  })
+
+  it('reports the effective image folder and validates custom ones', async () => {
+    const view = await (await fetch(base + '/settings')).json() as { effectiveImageDir: string }
+    expect(view.effectiveImageDir).toBe(join(dir, 'images'))
+    const next = { ...defaultSettings(), imageDir: 'relative/path' }
+    expect((await post('/settings', { settings: next })).status).toBe(400)
+    const custom = join(dir, 'pictures')
+    const saved = await post('/settings', { settings: { ...defaultSettings(), imageDir: custom } })
+    expect(saved.body.effectiveImageDir).toBe(custom)
   })
 
   it('serves the gallery revision counter', async () => {

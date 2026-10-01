@@ -64,3 +64,23 @@ describe('resolveSize', () => {
     expect(resolveSize(preset('google'), { aspectRatio: '21:9', imageSize: '8K' })).toEqual({ aspectRatio: '21:9' })
   })
 })
+
+describe('size helpers', () => {
+  it('derives aligned sizes from ratio and long side', async () => {
+    const { sizeForRatio, clampDimension, parseSize } = await import('../src/shared.js')
+    expect(sizeForRatio('16:9', 2048, 16)).toEqual({ width: 2048, height: 1152 })
+    expect(sizeForRatio('2:3', 1536, 32)).toEqual({ width: 1024, height: 1536 })
+    expect(sizeForRatio('1:1', 4096, 16, { min: 64, max: 2048, step: 16 })).toEqual({ width: 2048, height: 2048 })
+    expect(clampDimension(1000, { min: 256, max: 2048, step: 32 })).toBe(992)
+    expect(clampDimension(10, { min: 256, max: 2048, step: 32 })).toBe(256)
+    expect(parseSize('1536x1024')).toEqual({ width: 1536, height: 1024 })
+    expect(parseSize('1328*1328')).toEqual({ width: 1328, height: 1328 })
+    expect(parseSize('big')).toBeUndefined()
+  })
+  it('sends an explicit size to ModelScope and converts it for DashScope', async () => {
+    const ms = await run(preset('modelscope'), { prompt: 'p', aspectRatio: '1:1', size: '2048x1152' }, (_url, index) => index === 0 ? json({ images: [{ url: 'https://cdn/x.png' }] }) : png())
+    expect(bodyOf(ms.calls[0])).toMatchObject({ size: '2048x1152' })
+    const ds = await run(preset('dashscope'), { prompt: 'p', size: '1536x1024' }, (_url, index) => index === 0 ? json({ output: { choices: [{ message: { content: [{ image: 'https://cdn/y.png' }] } }] } }) : png())
+    expect((bodyOf(ds.calls[0]).parameters as { size: string }).size).toBe('1536*1024')
+  })
+})

@@ -63,8 +63,28 @@ describe('GalleryDb', () => {
     const [a, b] = await db.addItems([item('a'), item('b')])
     await db.updateItems([a!.id], { projectId: CONVERSATION_PROJECT_ID })
     await expect(db.updateItems([a!.id], { projectId: 'missing' })).rejects.toThrow()
-    expect(await db.removeItems([b!.id, 'nope'])).toBe(1)
+    expect((await db.removeItems([b!.id, 'nope'])).map(item => item.id)).toEqual([b!.id])
     expect((await db.list()).items.map(entry => entry.projectId)).toEqual([CONVERSATION_PROJECT_ID])
+  })
+
+  it('edits favorite prompts and merges duplicates', async () => {
+    const aId = (await db.addFavoritePrompt('a cat')).id
+    const b = await db.addFavoritePrompt('a dog')
+    const edited = await db.updateFavoritePrompt(aId, '  a tiger  ')
+    expect(edited.text).toBe('a tiger')
+    expect(edited.id).not.toBe(aId)
+    const merged = await db.updateFavoritePrompt(edited.id, 'a dog')
+    expect(merged.id).toBe(b.id)
+    expect((await db.favoritePrompts()).map(entry => entry.text)).toEqual(['a dog'])
+    await expect(db.updateFavoritePrompt('missing', 'x')).rejects.toThrow()
+  })
+
+  it('tracks file paths for items', async () => {
+    const [a] = await db.addItems([item('a')])
+    await db.setFilePath(a!.id, '/tmp/x.png')
+    expect((await db.get(a!.id))?.filePath).toBe('/tmp/x.png')
+    expect(await db.fileInUse('/tmp/x.png')).toBe(true)
+    expect(await db.fileInUse('/tmp/y.png')).toBe(false)
   })
 
   it('dedupes favorite prompts', async () => {

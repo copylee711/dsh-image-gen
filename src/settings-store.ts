@@ -54,6 +54,7 @@ export function normalizeSettings(raw: unknown): PluginSettings {
     },
     saveToWorkspace: typeof input.saveToWorkspace === 'boolean' ? input.saveToWorkspace : base.saveToWorkspace,
     workspaceFolder: typeof input.workspaceFolder === 'string' ? input.workspaceFolder.trim() : base.workspaceFolder,
+    imageDir: typeof input.imageDir === 'string' ? input.imageDir.trim() : base.imageDir,
   }
 }
 
@@ -139,6 +140,9 @@ export function validateSettings(settings: PluginSettings): string[] {
         problems.push(`${entry.name}：端点不是合法的 URL`)
       }
     }
+  }
+  if (settings.imageDir.length > 0 && !/^(?:[a-zA-Z]:[\\/]|\/|\\\\)/.test(settings.imageDir)) {
+    problems.push('图片保存目录必须是绝对路径')
   }
   return problems
 }

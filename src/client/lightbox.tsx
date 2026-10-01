@@ -1,6 +1,6 @@
 /** Full-screen viewer with metadata and actions for one gallery image. */
 import { useEffect } from 'react'
-import { ChevronLeft, ChevronRight, Copy, Download, ImagePlus, RotateCcw, Star, Trash2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Copy, Download, FolderOpen, ImagePlus, RotateCcw, Star, Trash2, X } from 'lucide-react'
 import type { GalleryItem } from '../gallery-types.js'
 import { imageUrl } from './api.js'
 import type { Translate } from './i18n.js'
@@ -13,6 +13,8 @@ export interface LightboxActions {
   onCopy: (item: GalleryItem) => void
   onUseAsReference?: (item: GalleryItem) => void
   onReusePrompt?: (item: GalleryItem) => void
+  /** Show the image's file in the OS file manager. */
+  onReveal?: (item: GalleryItem) => void
 }
 
 export function Lightbox({ items, index, onIndex, onClose, t, actions, projectName }: {
@@ -59,7 +61,8 @@ export function Lightbox({ items, index, onIndex, onClose, t, actions, projectNa
             {projectName !== undefined && <><dt>{t('projects')}</dt><dd>{projectName(item.projectId)}</dd></>}
             <dt>{t('createdAt')}</dt><dd>{date}</dd>
             {item.sessionId !== undefined && <><dt>{t('source')}</dt><dd>{t('fromConversation')}</dd></>}
-            {item.savedTo !== undefined && <><dt>{t('file')}</dt><dd>{item.savedTo}</dd></>}
+            {item.filePath !== undefined && <><dt>{t('file')}</dt><dd>{item.filePath}</dd></>}
+            {item.savedTo !== undefined && <><dt>{t('workspaceCopy')}</dt><dd>{item.savedTo}</dd></>}
           </dl>
           <div className="dig-lightbox-actions">
             <button type="button" className="dig-btn dig-btn-sm" onClick={() => actions.onDownload(item)}><Download size={14} />{t('download')}</button>
@@ -68,6 +71,7 @@ export function Lightbox({ items, index, onIndex, onClose, t, actions, projectNa
               <Star size={14} fill={item.favorite ? '#f5a623' : 'none'} color={item.favorite ? '#f5a623' : 'currentColor'} />{item.favorite ? t('unfavorite') : t('favorite')}
             </button>}
             {actions.onUseAsReference !== undefined && <button type="button" className="dig-btn dig-btn-sm" onClick={() => actions.onUseAsReference?.(item)}><ImagePlus size={14} />{t('useAsReference')}</button>}
+            {actions.onReveal !== undefined && <button type="button" className="dig-btn dig-btn-sm" onClick={() => actions.onReveal?.(item)}><FolderOpen size={14} />{t('revealInFolder')}</button>}
             {actions.onReusePrompt !== undefined && item.prompt.length > 0 && <button type="button" className="dig-btn dig-btn-sm" onClick={() => actions.onReusePrompt?.(item)}><RotateCcw size={14} />{t('reusePrompt')}</button>}
             {actions.onDelete !== undefined && <button type="button" className="dig-btn dig-btn-sm dig-btn-danger" onClick={() => actions.onDelete?.(item)}><Trash2 size={14} />{t('delete')}</button>}
           </div>

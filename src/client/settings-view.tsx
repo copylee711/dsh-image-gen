@@ -3,7 +3,7 @@
  * storage. Used both as the DSH settings page and inside the paintings page.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Globe, LoaderCircle, Plus, Trash2 } from 'lucide-react'
+import { FolderOpen, Globe, LoaderCircle, Plus, Trash2 } from 'lucide-react'
 import {
   PROTOCOL_LABELS,
   PROVIDER_PROTOCOLS,
@@ -21,8 +21,9 @@ import { Modal, Switch } from './widgets.js'
 const GENERAL = '__general__'
 
 function stripView(view: SettingsView): PluginSettings {
+  const { effectiveImageDir: _dir, ...rest } = view
   return {
-    ...view,
+    ...rest,
     providers: view.providers.map(({ keyConfigured: _ignored, ...entry }) => entry),
   }
 }
@@ -195,6 +196,14 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
           <div className="dig-field">
             <label className="dig-label" htmlFor="dig-ws-folder">{t('workspaceFolder')}</label>
             <input id="dig-ws-folder" className="dig-input" value={draft.workspaceFolder} disabled={!draft.saveToWorkspace} onChange={event => setDraft({ ...draft, workspaceFolder: event.target.value })} />
+          </div>
+          <div className="dig-field">
+            <label className="dig-label" htmlFor="dig-image-dir">{t('imageDir')}</label>
+            <div className="dig-row">
+              <input id="dig-image-dir" className="dig-input" placeholder={view.effectiveImageDir} value={draft.imageDir} onChange={event => setDraft({ ...draft, imageDir: event.target.value })} />
+              <button type="button" className="dig-btn dig-btn-sm" onClick={() => { api.gallery.openFolder().catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure))) }}><FolderOpen size={13} />{t('openFolder')}</button>
+            </div>
+            <span className="dig-hint">{t('imageDirHint', { path: view.effectiveImageDir })}</span>
           </div>
           <div className="dig-notice">{t('galleryNote')}</div>
         </>

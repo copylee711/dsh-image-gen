@@ -198,6 +198,7 @@ export function GalleryView(props: {
       projectName={projectName}
       actions={{
         onDownload: item => { void downloadImage(item.attachment, `copylee-image-${item.id.slice(0, 8)}`) },
+        onReveal: item => { void api.gallery.reveal(item.id).then(result => props.toast(t('revealedAt', { path: result.path })), (error: unknown) => props.onError(error instanceof Error ? error.message : String(error))) },
         onCopy: item => { void copyImage(item.attachment).then(() => props.toast(t('copied')), (error: unknown) => props.onError(error instanceof Error ? error.message : String(error))) },
         onFavorite: item => { void api.gallery.update([item.id], { favorite: !item.favorite }).then(after) },
         onDelete: item => setConfirmDelete([item.id]),

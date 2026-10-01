@@ -7,7 +7,8 @@ import { providerFetch, resetDispatchers, validateProxyUrl, type FetchLike } fro
 import { parseImageAttachmentRef } from './reference-image.js'
 import { ensureVersionedBase } from './download.js'
 import { RouteError, jsonRoute, readJsonBody, requestSignal, sendJson, str, stringArray } from './route-util.js'
-import { generateAndStore, settingsView, toAttachmentJson, type PluginServices } from './services.js'
+import { fileExists, openFolder, removeImageCopy, revealInFileManager } from './image-files.js'
+import { generateAndStore, imageDir, saveImageCopy, settingsView, toAttachmentJson, type PluginServices } from './services.js'
 import { normalizeSettings, requireProvider } from './settings-store.js'
 import { capabilitiesOf, effectiveModel, type GlobalProxy, type ProviderEntry } from './shared.js'
 import { redactSecrets } from './redact.js'
@@ -244,8 +245,10 @@ export function paintRoute(services: PluginServices) {
     const outcomes = await Promise.allSettled(Array.from({ length: count }, () => generateAndStore(services, entry.id, request, signal)))
     const done = outcomes.flatMap(outcome => outcome.status === 'fulfilled' ? [outcome.value] : [])
     const failures = outcomes.flatMap(outcome => outcome.status === 'rejected' ? [outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)] : [])
-    const items = done.length === 0 ? [] : await services.gallery.addItems(done.map(({ attachment, result }) => ({
+    const copies = await Promise.all(done.map(({ attachment, result }) => saveImageCopy(services, toAttachmentJson(attachment), result.data, prompt)))
+    const items = done.length === 0 ? [] : await services.gallery.addItems(done.map(({ attachment, result }, index) => ({
       attachment: toAttachmentJson(attachment),
+      ...(copies[index] === undefined ? {} : { filePath: copies[index] }),
       prompt,
       ...(request.negativePrompt === undefined || request.negativePrompt.length === 0 ? {} : { negativePrompt: request.negativePrompt }),
       providerId: entry.id,
@@ -260,6 +263,21 @@ export function paintRoute(services: PluginServices) {
     if (items.length === 0 && failures.length > 0) throw new RouteError(502, failures[0]!)
     return { items, failures }
   })
+}
+
+/**
+ * Path of the item's readable copy, writing it now for items that predate
+ * copies or whose file was moved away.
+ */
+async function ensureCopy(services: PluginServices, item: GalleryItem): Promise<string> {
+  if (item.filePath !== undefined && await fileExists(item.filePath)) return item.filePath
+  const ref = parseImageAttachmentRef(item.attachment)
+  if (ref === undefined) throw new RouteError(404, '图片引用无效')
+  const stored = await services.attachments.readImage(ref)
+  const path = await saveImageCopy(services, item.attachment, stored.data, item.prompt)
+  if (path === undefined) throw new RouteError(500, '无法写入图片文件，请检查「图片保存目录」')
+  await services.gallery.setFilePath(item.id, path)
+  return path
 }
 
 function attachmentList(value: unknown): AttachmentJson[] {
@@ -299,19 +317,44 @@ export function galleryRoute(services: PluginServices) {
             ...(Array.isArray(body.tags) ? { tags: stringArray(body.tags) } : {}),
           }),
         }
-        case 'remove': return { removed: await gallery.removeItems(ids) }
+        case 'remove': {
+          const removed = await gallery.removeItems(ids)
+          const dir = await imageDir(services)
+          for (const item of removed) {
+            if (item.filePath !== undefined && !(await gallery.fileInUse(item.filePath))) await removeImageCopy(dir, item.filePath)
+          }
+          return { removed: removed.length }
+        }
+        case 'reveal': {
+          const item = await gallery.get(str(body.id) ?? '')
+          if (item === undefined) throw new RouteError(404, '图片不存在')
+          const path = await ensureCopy(services, item)
+          revealInFileManager(path, services.launch)
+          return { path }
+        }
+        case 'openFolder': {
+          const dir = await imageDir(services)
+          await openFolder(dir, services.launch)
+          return { path: dir }
+        }
         case 'createProject': return { project: await gallery.createProject(str(body.name) ?? '') }
         case 'renameProject': return gallery.renameProject(str(body.id) ?? '', str(body.name) ?? '')
         case 'deleteProject': return gallery.deleteProject(str(body.id) ?? '', body.deleteItems === true)
         case 'reorderProjects': return gallery.reorderProjects(ids)
         case 'favoritePrompts': return { prompts: await gallery.favoritePrompts() }
         case 'addFavoritePrompt': return { prompt: await gallery.addFavoritePrompt(str(body.text) ?? '') }
+        case 'updateFavoritePrompt': return { prompt: await gallery.updateFavoritePrompt(str(body.id) ?? '', str(body.text) ?? '') }
         case 'removeFavoritePrompt': return gallery.removeFavoritePrompt(str(body.id) ?? '')
         case 'import': {
           const attachments = attachmentList(body.attachments)
           if (attachments.length === 0) throw new RouteError(400, 'no-attachments')
-          const items: GalleryItem[] = await gallery.addItems(attachments.map(attachment => ({
+          const copies = await Promise.all(attachments.map(async attachment => {
+            const stored = await services.attachments.readImage(attachment as unknown as ImageAttachmentRef).catch(() => undefined)
+            return stored === undefined ? undefined : saveImageCopy(services, attachment, stored.data, attachment.name ?? 'import')
+          }))
+          const items: GalleryItem[] = await gallery.addItems(attachments.map((attachment, index) => ({
             attachment,
+            ...(copies[index] === undefined ? {} : { filePath: copies[index] }),
             prompt: str(body.prompt) ?? '',
             providerId: 'import',
             providerName: '导入',

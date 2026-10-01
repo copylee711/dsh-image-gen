@@ -42,6 +42,8 @@ export interface GalleryItem {
   sessionId?: string
   /** Workspace file written alongside, when enabled. */
   savedTo?: string
+  /** Readable copy under the plugin's image folder. */
+  filePath?: string
   /** Reference images used for an edit. */
   sourceAttachmentIds?: string[]
   /** Images from one paintings-page request share a batch id. */

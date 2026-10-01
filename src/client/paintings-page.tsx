@@ -2,8 +2,8 @@
  * Global “绘画” page mounted from the left sidebar. Not bound to any DSH
  * workspace or session: projects here are the gallery's own grouping.
  */
-import { useCallback, useEffect, useState } from 'react'
-import { Bookmark, Images, Palette, Settings, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Bookmark, Images, Palette, Pencil, Settings, Trash2 } from 'lucide-react'
 import { DEFAULT_PROJECT_ID, type FavoritePrompt, type GalleryItem } from '../gallery-types.js'
 import type { SettingsView } from '../shared.js'
 import { api, type ProjectSummary } from './api.js'
@@ -133,6 +133,7 @@ export function PaintingsPage({ locale }: PaintingsPageProps) {
         onOpenSettings={() => setTab('settings')}
         injected={injected}
         sideTop={projectList(false)}
+        refreshKey={refreshKey}
       />}
       {tab === 'gallery' && <GalleryView
         t={t}
@@ -162,11 +163,46 @@ function PromptsView({ t, refreshKey, onUse, onError }: { t: Translate; refreshK
     api.gallery.favoritePrompts().then(result => setPrompts(result.prompts), (failure: unknown) => onError(String(failure)))
   }, [onError])
   useEffect(load, [load, refreshKey])
+  const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+  const cancelled = useRef(false)
+  const startEdit = (prompt: FavoritePrompt): void => {
+    cancelled.current = false
+    setDraft(prompt.text)
+    setEditing(prompt.id)
+  }
+  const commit = (id: string): void => {
+    setEditing(null)
+    if (cancelled.current) {
+      cancelled.current = false
+      return
+    }
+    const original = prompts.find(entry => entry.id === id)
+    if (original === undefined || draft.trim() === original.text || draft.trim().length === 0) return
+    api.gallery.updateFavoritePrompt(id, draft).then(load, (failure: unknown) => onError(failure instanceof Error ? failure.message : String(failure)))
+  }
   return <div className="dig-scroll" style={{ flex: 1, minWidth: 0 }}>
     <div className="dig-prompts">
       {prompts.length === 0 && <div className="dig-empty"><Bookmark size={32} strokeWidth={1.4} />{t('noPrompts')}</div>}
       {prompts.map(prompt => <div key={prompt.id} className="dig-prompt-row">
-        <div className="dig-prompt-text">{prompt.text}</div>
+        {editing === prompt.id
+          ? <textarea
+            className="dig-textarea dig-prompt-text"
+            autoFocus
+            rows={Math.min(8, Math.max(2, draft.split('\n').length))}
+            value={draft}
+            onChange={event => setDraft(event.target.value)}
+            onBlur={() => commit(prompt.id)}
+            onKeyDown={event => {
+              if (event.key === 'Escape') {
+                cancelled.current = true
+                setEditing(null)
+              }
+              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) commit(prompt.id)
+            }}
+          />
+          : <div className="dig-prompt-text" role="button" tabIndex={0} title={t('editPrompt')} style={{ cursor: 'text' }} onClick={() => startEdit(prompt)} onKeyDown={event => { if (event.key === 'Enter') startEdit(prompt) }}>{prompt.text}</div>}
+        <button type="button" className="dig-icon-btn" title={t('editPrompt')} aria-label={t('editPrompt')} onClick={() => startEdit(prompt)}><Pencil size={15} /></button>
         <button type="button" className="dig-btn dig-btn-sm" onClick={() => onUse(prompt.text)}>{t('usePrompt')}</button>
         <button type="button" className="dig-icon-btn" aria-label={t('delete')} onClick={() => { void api.gallery.removeFavoritePrompt(prompt.id).then(load) }}><Trash2 size={15} /></button>
       </div>)}

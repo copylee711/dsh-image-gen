@@ -3,6 +3,7 @@ import type { ImageAttachmentRef, ImageMediaType, StoredImageAttachment } from '
 import type { KeyStore } from './credentials.js'
 import type { GalleryDb } from './gallery-db.js'
 import type { AttachmentJson } from './gallery-types.js'
+import { resolveImageDir, writeImageCopy, type Launcher } from './image-files.js'
 import { runGeneration, type GenerationRequest, type GenerationResult } from './generate.js'
 import type { FetchLike } from './http.js'
 import type { SettingsStore } from './settings-store.js'
@@ -22,6 +23,10 @@ export interface PluginServices {
   attachments: AttachmentService
   /** Tests inject a fake network. */
   fetch?: FetchLike
+  /** Plugin data folder (settings, gallery, default image folder). */
+  dataDir: string
+  /** Opens the OS file manager; tests inject a recorder. */
+  launch?: Launcher
 }
 
 /** Settings as the browser may see them: key presence instead of keys. */
@@ -31,7 +36,24 @@ export async function settingsView(services: PluginServices): Promise<SettingsVi
     ...entry,
     keyConfigured: await services.keys.get(entry.id).then(value => value !== undefined, () => false),
   })))
-  return { ...settings, providers }
+  return { ...settings, providers, effectiveImageDir: resolveImageDir(settings.imageDir, services.dataDir) }
+}
+
+/** The folder image copies currently go to. */
+export async function imageDir(services: PluginServices): Promise<string> {
+  return resolveImageDir((await services.settings.get()).imageDir, services.dataDir)
+}
+
+/**
+ * Write the readable copy for one gallery image. Never fails the caller:
+ * a disk problem just leaves the item without `filePath`.
+ */
+export async function saveImageCopy(services: PluginServices, attachment: AttachmentJson, data: Uint8Array, prompt: string): Promise<string | undefined> {
+  try {
+    return await writeImageCopy(await imageDir(services), attachment, data, prompt)
+  } catch {
+    return undefined
+  }
 }
 
 export async function requireKey(services: PluginServices, entry: ProviderEntry): Promise<string> {

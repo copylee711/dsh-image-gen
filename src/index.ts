@@ -14,7 +14,7 @@ import { CONVERSATION_PROJECT_ID } from './gallery-types.js'
 import { serveImport } from './import-route.js'
 import { parseImageAttachmentRef, resolveReferenceImages } from './reference-image.js'
 import { galleryRoute, imageRoute, keyRoute, modelsRoute, paintRoute, settingsRoute, testRoute } from './routes.js'
-import { generateAndStore, toAttachmentJson, type PluginServices } from './services.js'
+import { generateAndStore, saveImageCopy, toAttachmentJson, type PluginServices } from './services.js'
 import { SettingsStore } from './settings-store.js'
 import {
   ASPECT_RATIOS,
@@ -84,7 +84,10 @@ export function providerDigest(settings: PluginSettings, keyed: ReadonlySet<stri
       const caps = capabilitiesOf(entry)
       const model = effectiveModel(entry)
       const edit = caps.maxReferences > 0 ? `edit≤${String(caps.maxReferences)}` : 'no-edit'
-      return `- ${entry.id}${entry.id === settings.activeProvider ? ' (default)' : ''}: ${entry.name}, model ${model || '?'}, ${edit}`
+      const size = caps.customSize === undefined
+        ? `sizes via aspect_ratio${caps.tiers.length > 0 ? ` + image_size ${caps.tiers.join('/')}` : ''}`
+        : `size ${String(caps.customSize.min)}–${String(caps.customSize.max)}px per side`
+      return `- ${entry.id}${entry.id === settings.activeProvider ? ' (default)' : ''}: ${entry.name}, model ${model || '?'}, ${edit}, ${size}`
     })
   if (rows.length === 0) {
     return 'Image generation tools (paint_image, edit_painting) are installed but no image provider has an API key yet; if the user asks for an image, tell them to configure one in Settings > Plugins > 图像生成.'
@@ -105,7 +108,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     fileKeyStore(dataDir),
   )
   const gallery = new GalleryDb(dataDir)
-  const services: PluginServices = { settings, keys, gallery, attachments: ctx.attachments }
+  const services: PluginServices = { settings, keys, gallery, attachments: ctx.attachments, dataDir }
 
   const route = (kind: 'exact' | 'prefix', path: string, handler: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<void>): void => {
     ctx.effect(() => ctx.webServer.register({ kind, path, handler }), `${PLUGIN_SLUG}: ${path}`)
@@ -164,8 +167,10 @@ export function apply(ctx: Context, config: Config = {}): void {
       }
     }
     const sessionId = exec.agent?.session.header.id
+    const filePath = await saveImageCopy(services, toAttachmentJson(attachment), result.data, args.prompt)
     await gallery.addItems([{
       attachment: toAttachmentJson(attachment),
+      ...(filePath === undefined ? {} : { filePath }),
       prompt: args.prompt,
       ...(args.negative_prompt === undefined ? {} : { negativePrompt: args.negative_prompt }),
       providerId: entry.id,
@@ -187,7 +192,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   const sizeParams = {
     aspect_ratio: { type: 'string', enum: [...ASPECT_RATIOS], description: 'Optional aspect ratio; mapped to the closest size the provider supports.' },
     image_size: { type: 'string', enum: ['1K', '2K', '4K'], description: 'Optional resolution tier for providers that have tiers (Gemini, Seedream, xAI).' },
-    size: { type: 'string', description: 'Optional exact WIDTHxHEIGHT size; overrides aspect_ratio/image_size.' },
+    size: { type: 'string', description: 'Optional exact WIDTHxHEIGHT size such as 1536x1024 or 2048x1152; overrides aspect_ratio/image_size. Use it when the user asks for a resolution; each provider\'s allowed range is listed in context.' },
     negative_prompt: { type: 'string', description: 'Optional things to avoid (ModelScope / SiliconFlow).' },
   } as const
 

@@ -168,12 +168,29 @@ export class GalleryDb {
     })
   }
 
-  removeItems(ids: readonly string[]): Promise<number> {
+  /** Remove items; returns the removed records (callers clean up their files). */
+  removeItems(ids: readonly string[]): Promise<GalleryItem[]> {
     return this.mutate(data => {
       const wanted = new Set(ids)
-      const before = data.items.length
+      const removed = data.items.filter(item => wanted.has(item.id))
       data.items = data.items.filter(item => !wanted.has(item.id))
-      return before - data.items.length
+      return removed
+    })
+  }
+
+  async get(id: string): Promise<GalleryItem | undefined> {
+    return (await this.load()).items.find(item => item.id === id)
+  }
+
+  /** Whether any item still points at this file. */
+  async fileInUse(path: string): Promise<boolean> {
+    return (await this.load()).items.some(item => item.filePath === path)
+  }
+
+  setFilePath(id: string, filePath: string): Promise<void> {
+    return this.mutate(data => {
+      const item = data.items.find(entry => entry.id === id)
+      if (item !== undefined) item.filePath = filePath
     })
   }
 
@@ -238,6 +255,25 @@ export class GalleryDb {
       const entry = { id, text: trimmed, addedAt: Date.now() }
       data.favoritePrompts.push(entry)
       return entry
+    })
+  }
+
+  /** Rewrite a saved prompt; merges into an existing entry with the same text. */
+  updateFavoritePrompt(id: string, text: string): Promise<FavoritePrompt> {
+    const trimmed = text.trim()
+    if (trimmed.length === 0) return Promise.reject(new Error('Prompt 为空'))
+    return this.mutate(data => {
+      const current = data.favoritePrompts.find(entry => entry.id === id)
+      if (current === undefined) throw new Error('收藏的 Prompt 不存在')
+      const nextId = promptId(trimmed)
+      const duplicate = data.favoritePrompts.find(entry => entry.id === nextId && entry.id !== id)
+      if (duplicate !== undefined) {
+        data.favoritePrompts = data.favoritePrompts.filter(entry => entry.id !== id)
+        return duplicate
+      }
+      current.id = nextId
+      current.text = trimmed
+      return current
     })
   }
 

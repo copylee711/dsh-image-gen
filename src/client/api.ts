@@ -61,6 +61,8 @@ export const api = {
     negativePrompt?: string
     aspectRatio?: string
     imageSize?: string
+    /** Explicit `WxH`; wins over ratio / tier. */
+    size?: string
     quality?: string
     seed?: number
     count: number
@@ -81,6 +83,9 @@ export const api = {
     reorderProjects: (ids: string[]) => call<unknown>(GALLERY_ROUTE, { op: 'reorderProjects', ids }),
     favoritePrompts: () => call<{ prompts: FavoritePrompt[] }>(GALLERY_ROUTE, { op: 'favoritePrompts' }),
     addFavoritePrompt: (text: string) => call<{ prompt: FavoritePrompt }>(GALLERY_ROUTE, { op: 'addFavoritePrompt', text }),
+    updateFavoritePrompt: (id: string, text: string) => call<{ prompt: FavoritePrompt }>(GALLERY_ROUTE, { op: 'updateFavoritePrompt', id, text }),
+    reveal: (id: string) => call<{ path: string }>(GALLERY_ROUTE, { op: 'reveal', id }),
+    openFolder: () => call<{ path: string }>(GALLERY_ROUTE, { op: 'openFolder' }),
     removeFavoritePrompt: (id: string) => call<unknown>(GALLERY_ROUTE, { op: 'removeFavoritePrompt', id }),
     importAttachments: (attachments: AttachmentJson[], projectId: string) => call<{ items: GalleryItem[] }>(GALLERY_ROUTE, { op: 'import', attachments, projectId }),
   },
