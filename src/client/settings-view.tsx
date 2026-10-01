@@ -3,7 +3,7 @@
  * storage. Used both as the DSH settings page and inside the paintings page.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Globe, LoaderCircle, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Globe, LoaderCircle, Plus, Trash2 } from 'lucide-react'
 import {
   PROTOCOL_LABELS,
   PROVIDER_PROTOCOLS,
@@ -14,6 +14,8 @@ import {
 } from '../shared.js'
 import { api } from './api.js'
 import type { Translate } from './i18n.js'
+import { ModelList } from './model-list.js'
+import { Select } from './select.js'
 import { Modal, Switch } from './widgets.js'
 
 const GENERAL = '__general__'
@@ -44,7 +46,6 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
   const [keyInput, setKeyInput] = useState('')
   const [test, setTest] = useState<TestState>({ running: false })
   const [proxyTest, setProxyTest] = useState<TestState>({ running: false })
-  const [fetchingModels, setFetchingModels] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<ProviderEntry | null>(null)
   const [sizesText, setSizesText] = useState('')
   const [sizesError, setSizesError] = useState<string | null>(null)
@@ -121,20 +122,6 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
       setTest({ running: false, ok: result.ok, message: result.latencyMs === undefined ? result.message : `${result.message} · ${String(result.latencyMs)}ms` })
     } catch (failure) {
       setTest({ running: false, ok: false, message: failure instanceof Error ? failure.message : String(failure) })
-    }
-  }
-  const fetchModels = async (): Promise<void> => {
-    if (entry === undefined) return
-    setFetchingModels(true)
-    setError(null)
-    try {
-      const result = await api.models({ providerId: entry.id, entry, ...(keyInput.trim().length > 0 ? { key: keyInput.trim() } : {}) })
-      const merged = [...new Set([...entry.models, ...result.models])]
-      patchEntry({ models: merged, ...(entry.defaultModel.length === 0 && merged[0] !== undefined ? { defaultModel: merged[0] } : {}) })
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure))
-    } finally {
-      setFetchingModels(false)
     }
   }
   const addProvider = (): void => {
@@ -231,9 +218,14 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
           </div>
           <div className="dig-field">
             <label className="dig-label" htmlFor="dig-protocol">{t('protocol')}</label>
-            <select id="dig-protocol" className="dig-select" value={entry.protocol} disabled={entry.preset === true} onChange={event => patchEntry({ protocol: event.target.value as ProviderProtocol })}>
-              {PROVIDER_PROTOCOLS.map(protocol => <option key={protocol} value={protocol}>{PROTOCOL_LABELS[protocol]}</option>)}
-            </select>
+            <Select
+              id="dig-protocol"
+              label={t('protocol')}
+              value={entry.protocol}
+              disabled={entry.preset === true}
+              options={PROVIDER_PROTOCOLS.map(protocol => ({ value: protocol, label: PROTOCOL_LABELS[protocol] }))}
+              onChange={protocol => patchEntry({ protocol: protocol as ProviderProtocol })}
+            />
           </div>
           <div className="dig-field">
             <label className="dig-label" htmlFor="dig-base">{t('baseURL')}</label>
@@ -248,20 +240,14 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
               {keyConfigured && <button type="button" className="dig-btn dig-btn-sm" onClick={() => { void saveKey('') }}>{t('clearKey')}</button>}
             </div>
           </div>
-          <div className="dig-field">
-            <span className="dig-label">{t('models')}
-              <button type="button" className="dig-btn dig-btn-sm" disabled={fetchingModels || entry.baseURL.length === 0} onClick={() => { void fetchModels() }}>
-                {fetchingModels ? <LoaderCircle size={13} className="dig-spin" /> : <RefreshCw size={13} />}{t('fetchModels')}
-              </button>
-            </span>
-            <textarea className="dig-textarea" rows={4} value={entry.models.join('\n')} onChange={event => patchEntry({ models: event.target.value.split('\n') })} />
-            <span className="dig-hint">{t('modelsHint')}</span>
-          </div>
-          <div className="dig-field">
-            <label className="dig-label" htmlFor="dig-default-model">{t('defaultModel')}</label>
-            <input id="dig-default-model" className="dig-input" list="dig-model-options" value={entry.defaultModel} onChange={event => patchEntry({ defaultModel: event.target.value })} />
-            <datalist id="dig-model-options">{entry.models.map(model => <option key={model} value={model} />)}</datalist>
-          </div>
+          <ModelList
+            t={t}
+            models={entry.models}
+            defaultModel={entry.defaultModel}
+            fetchDisabled={entry.baseURL.length === 0}
+            onChange={next => patchEntry(next)}
+            onFetch={async () => (await api.models({ providerId: entry.id, entry, ...(keyInput.trim().length > 0 ? { key: keyInput.trim() } : {}) })).models}
+          />
           <div className="dig-field">
             <span className="dig-label">{t('proxy')}</span>
             <div className="dig-chips" role="radiogroup" aria-label={t('proxy')}>
@@ -276,11 +262,17 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
             <summary className="dig-label" style={{ cursor: 'pointer', justifyContent: 'flex-start' }}>{t('compatAdvanced')}</summary>
             <div className="dig-field" style={{ marginTop: 8 }}>
               <label className="dig-label" htmlFor="dig-edit-format">{t('editFormat')}</label>
-              <select id="dig-edit-format" className="dig-select" value={entry.compat?.editFormat ?? 'multipart'} onChange={event => patchEntry({ compat: { ...entry.compat, editFormat: event.target.value as 'multipart' } })}>
-                <option value="multipart">multipart (OpenAI)</option>
-                <option value="jsonImageUrlArray">JSON images[].image_url</option>
-                <option value="formReferenceImages">form reference_images</option>
-              </select>
+              <Select
+                id="dig-edit-format"
+                label={t('editFormat')}
+                value={entry.compat?.editFormat ?? 'multipart'}
+                options={[
+                  { value: 'multipart', label: 'multipart (OpenAI)' },
+                  { value: 'jsonImageUrlArray', label: 'JSON images[].image_url' },
+                  { value: 'formReferenceImages', label: 'form reference_images' },
+                ]}
+                onChange={editFormat => patchEntry({ compat: { ...entry.compat, editFormat: editFormat as 'multipart' } })}
+              />
             </div>
             <div className="dig-field">
               <label className="dig-label" htmlFor="dig-sizes">{t('sizesTable')}</label>
@@ -309,10 +301,13 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
             </div>
             <div className="dig-field">
               <label className="dig-label" htmlFor="dig-ark-format">{t('seedreamFormat')}</label>
-              <select id="dig-ark-format" className="dig-select" value={entry.ark?.outputFormat ?? 'jpeg'} onChange={event => patchEntry({ ark: { ...entry.ark, outputFormat: event.target.value as 'png' | 'jpeg' } })}>
-                <option value="jpeg">JPEG</option>
-                <option value="png">PNG</option>
-              </select>
+              <Select
+                id="dig-ark-format"
+                label={t('seedreamFormat')}
+                value={entry.ark?.outputFormat ?? 'jpeg'}
+                options={[{ value: 'jpeg', label: 'JPEG' }, { value: 'png', label: 'PNG' }]}
+                onChange={outputFormat => patchEntry({ ark: { ...entry.ark, outputFormat: outputFormat as 'png' | 'jpeg' } })}
+              />
             </div>
           </>}
           <div className="dig-row">

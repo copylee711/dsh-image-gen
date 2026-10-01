@@ -130,6 +130,9 @@ describe('model listing helpers', () => {
   it('derives model list URLs per protocol', () => {
     expect(modelsURL({ protocol: 'gemini', baseURL: 'https://generativelanguage.googleapis.com/v1beta/interactions' })).toBe('https://generativelanguage.googleapis.com/v1beta/models')
     expect(modelsURL({ protocol: 'modelscope', baseURL: 'https://api-inference.modelscope.cn/v1' })).toBe('https://api-inference.modelscope.cn/v1/models')
+    expect(modelsURL({ protocol: 'modelscope', baseURL: 'https://api-inference.modelscope.cn' })).toBe('https://api-inference.modelscope.cn/v1/models')
+    expect(modelsURL({ protocol: 'siliconflow', baseURL: 'https://api.siliconflow.cn/' })).toBe('https://api.siliconflow.cn/v1/models')
+    expect(modelsURL({ protocol: 'openai-compat', baseURL: 'https://relay.example' })).toBe('https://relay.example/models')
     expect(modelsURL({ protocol: 'dashscope', baseURL: 'https://dashscope.aliyuncs.com/api/v1' })).toBe('https://dashscope.aliyuncs.com/compatible-mode/v1/models')
     expect(modelsURL({ protocol: 'openai', baseURL: 'not a url' })).toBeUndefined()
   })

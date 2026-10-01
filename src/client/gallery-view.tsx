@@ -7,6 +7,7 @@ import { api, copyImage, downloadImage, imageUrl, uploadFiles, type ProjectSumma
 import type { Translate } from './i18n.js'
 import { Lightbox } from './lightbox.js'
 import { ALL_PROJECTS, FAVORITES, projectLabel } from './projects.js'
+import { Select } from './select.js'
 import { Menu, Modal, useMenu } from './widgets.js'
 
 const PAGE = 120
@@ -100,15 +101,24 @@ export function GalleryView(props: {
           <Search size={14} />
           <input className="dig-input" placeholder={t('search')} value={query} onChange={event => setQuery(event.target.value)} />
         </div>
-        <select className="dig-select" value={providerId} onChange={event => setProviderId(event.target.value)} aria-label={t('provider')}>
-          <option value="">{t('allProviders')}</option>
-          {providerOptions.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-          <option value="import">{t('importImages')}</option>
-        </select>
-        <select className="dig-select" style={{ minWidth: 120 }} value={order} onChange={event => setOrder(event.target.value as 'asc' | 'desc')} aria-label="order">
-          <option value="desc">{t('newest')}</option>
-          <option value="asc">{t('oldest')}</option>
-        </select>
+        <Select
+          compact
+          label={t('provider')}
+          value={providerId}
+          options={[
+            { value: '', label: t('allProviders') },
+            ...providerOptions.map(entry => ({ value: entry.id, label: entry.name })),
+            { value: 'import', label: t('importImages') },
+          ]}
+          onChange={setProviderId}
+        />
+        <Select
+          compact
+          label={t('newest')}
+          value={order}
+          options={[{ value: 'desc', label: t('newest') }, { value: 'asc', label: t('oldest') }]}
+          onChange={next => setOrder(next as 'asc' | 'desc')}
+        />
         <span className="dig-spacer" />
         {selecting
           ? <>

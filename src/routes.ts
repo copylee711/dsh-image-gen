@@ -5,6 +5,7 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { CONVERSATION_PROJECT_ID, DEFAULT_PROJECT_ID, type AttachmentJson, type GalleryItem } from './gallery-types.js'
 import { providerFetch, resetDispatchers, validateProxyUrl, type FetchLike } from './http.js'
 import { parseImageAttachmentRef } from './reference-image.js'
+import { ensureVersionedBase } from './download.js'
 import { RouteError, jsonRoute, readJsonBody, requestSignal, sendJson, str, stringArray } from './route-util.js'
 import { generateAndStore, settingsView, toAttachmentJson, type PluginServices } from './services.js'
 import { normalizeSettings, requireProvider } from './settings-store.js'
@@ -91,7 +92,8 @@ export function modelsURL(entry: Pick<ProviderEntry, 'protocol' | 'baseURL'>): s
       const url = new URL(entry.baseURL)
       return `${url.origin}/compatible-mode/v1/models`
     }
-    const base = entry.baseURL.endsWith('/') ? entry.baseURL : `${entry.baseURL}/`
+    const raw = entry.protocol === 'modelscope' || entry.protocol === 'siliconflow' ? ensureVersionedBase(entry.baseURL) : entry.baseURL
+    const base = raw.endsWith('/') ? raw : `${raw}/`
     return new URL('models', base).toString()
   } catch {
     return undefined

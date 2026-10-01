@@ -19,7 +19,7 @@ export function Portal({ children }: { children: ReactNode }) {
   return createPortal(<div className="dig-root" style={{ background: 'transparent' }}>{children}</div>, document.body)
 }
 
-export function Modal({ title, children, onClose, actions }: { title: string; children?: ReactNode; onClose: () => void; actions: ReactNode }) {
+export function Modal({ title, children, onClose, actions, wide }: { title: string; children?: ReactNode; onClose: () => void; actions: ReactNode; wide?: boolean }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
@@ -29,7 +29,7 @@ export function Modal({ title, children, onClose, actions }: { title: string; ch
   }, [onClose])
   return <Portal>
     <div className="dig-modal-wrap" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-      <div className="dig-modal" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={wide === true ? 'dig-modal dig-modal-wide' : 'dig-modal'} role="dialog" aria-modal="true" aria-label={title}>
         <h2>{title}</h2>
         {children}
         <div className="dig-modal-actions">{actions}</div>

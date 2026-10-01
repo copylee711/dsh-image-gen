@@ -8,7 +8,7 @@
  * flattens the flow keeps working.
  */
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
-import { abortableDelay, downloadImage, joinURL, readBoundedText, toDataUrl, type FetchedImage } from './download.js'
+import { abortableDelay, downloadImage, ensureVersionedBase, joinURL, readBoundedText, toDataUrl, type FetchedImage } from './download.js'
 import type { FetchLike } from './http.js'
 import { redactSecrets } from './redact.js'
 
@@ -46,7 +46,9 @@ export async function generateModelScopeImage(input: ModelScopeInput): Promise<F
     'x-modelscope-async-mode': 'true',
   }
   const references = (input.sourceImages ?? []).map(toDataUrl)
-  const submit = await doFetch(joinURL(input.baseURL, 'images/generations'), {
+  const base = ensureVersionedBase(input.baseURL)
+  const submitURL = joinURL(base, 'images/generations')
+  const submit = await doFetch(submitURL, {
     method: 'POST',
     redirect: 'error',
     signal: input.signal,
@@ -61,7 +63,7 @@ export async function generateModelScopeImage(input: ModelScopeInput): Promise<F
     }),
   })
   const submitText = await readBoundedText(submit, RESPONSE_LIMIT)
-  if (!submit.ok) throw new Error(`${label} image request failed (${String(submit.status)}): ${redactSecrets(submitText, input.apiKey).slice(0, ERROR_LIMIT)}`)
+  if (!submit.ok) throw new Error(`${label} image request failed (${String(submit.status)}) POST ${submitURL}: ${redactSecrets(submitText, input.apiKey).slice(0, ERROR_LIMIT)}`)
   const submitted = parseJson(submitText, label)
   const direct = imageUrlOf(submitted)
   if (direct !== undefined) return downloadImage(direct, { fetch: doFetch, maxBytes: input.maxBytes, signal: input.signal, label })
@@ -70,7 +72,7 @@ export async function generateModelScopeImage(input: ModelScopeInput): Promise<F
 
   const deadline = Date.now() + (input.timeoutMs ?? MODELSCOPE_DEFAULT_TIMEOUT_MS)
   const interval = input.pollIntervalMs ?? 3000
-  const taskURL = joinURL(input.baseURL, `tasks/${encodeURIComponent(taskId)}`)
+  const taskURL = joinURL(base, `tasks/${encodeURIComponent(taskId)}`)
   for (;;) {
     await abortableDelay(interval, input.signal)
     const poll = await doFetch(taskURL, {
@@ -80,7 +82,7 @@ export async function generateModelScopeImage(input: ModelScopeInput): Promise<F
       headers: { authorization: `Bearer ${input.apiKey}`, 'x-modelscope-task-type': 'image_generation' },
     })
     const pollText = await readBoundedText(poll, RESPONSE_LIMIT)
-    if (!poll.ok) throw new Error(`${label} task query failed (${String(poll.status)}): ${redactSecrets(pollText, input.apiKey).slice(0, ERROR_LIMIT)}`)
+    if (!poll.ok) throw new Error(`${label} task query failed (${String(poll.status)}) GET ${taskURL}: ${redactSecrets(pollText, input.apiKey).slice(0, ERROR_LIMIT)}`)
     const task = parseJson(pollText, label)
     const status = typeof task.task_status === 'string' ? task.task_status.toUpperCase() : ''
     if (status === 'SUCCEED' || status === 'SUCCEEDED') {

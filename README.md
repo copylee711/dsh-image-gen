@@ -88,8 +88,15 @@ pnpm test        # vitest，包含本地 HTTP / SOCKS5 代理的端到端测试
 pnpm build       # 输出 lib/index.js（Host）和 lib/client.js（浏览器）
 pnpm pack:check
 
-# 发布（scoped 包，publishConfig 已设为 public）
-npm publish --access public
+```
+
+### 发版
+
+推送版本 tag 后，GitHub Actions（`.github/workflows/publish.yml`）会通过 npm Trusted Publishing 自动发布，并附带 provenance：
+
+```bash
+# 先把 package.json 的 version 改成新版本并合并到 main
+git tag v0.1.1 && git push origin v0.1.1
 ```
 
 ## 路线图

@@ -71,6 +71,25 @@ export async function downloadImage(
   return { data, mediaType }
 }
 
+/**
+ * Add a default API version segment when the base URL has no path at all.
+ * Official ModelScope samples use `https://api-inference.modelscope.cn/` and
+ * append `v1/...` themselves, so users paste the bare host; the image routes
+ * live under `/v1`. A base that already carries a path is left untouched.
+ */
+export function ensureVersionedBase(baseURL: string, version = '/v1'): string {
+  try {
+    const url = new URL(baseURL)
+    if (url.pathname === '' || url.pathname === '/') {
+      url.pathname = version
+      return url.toString().replace(/\/$/, '')
+    }
+    return baseURL
+  } catch {
+    return baseURL
+  }
+}
+
 /** Join a base URL and a relative path without dropping the base path. */
 export function joinURL(baseURL: string, path: string): string {
   try {

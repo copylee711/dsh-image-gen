@@ -1,6 +1,6 @@
 /** SiliconFlow `images/generations` adapter (Kolors, Qwen-Image, FLUX ...). */
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
-import { downloadImage, joinURL, readBoundedText, toDataUrl, type FetchedImage } from './download.js'
+import { downloadImage, ensureVersionedBase, joinURL, readBoundedText, toDataUrl, type FetchedImage } from './download.js'
 import type { FetchLike } from './http.js'
 import { redactSecrets } from './redact.js'
 
@@ -28,7 +28,8 @@ export async function generateSiliconFlowImage(input: SiliconFlowInput): Promise
   const label = 'SiliconFlow'
   const sources = input.sourceImages ?? []
   if (sources.length > 1) throw new Error(`${label} accepts one reference image per request; got ${String(sources.length)}`)
-  const response = await doFetch(joinURL(input.baseURL, 'images/generations'), {
+  const endpoint = joinURL(ensureVersionedBase(input.baseURL), 'images/generations')
+  const response = await doFetch(endpoint, {
     method: 'POST',
     redirect: 'error',
     signal: input.signal,
@@ -44,7 +45,7 @@ export async function generateSiliconFlowImage(input: SiliconFlowInput): Promise
     }),
   })
   const text = await readBoundedText(response, RESPONSE_LIMIT)
-  if (!response.ok) throw new Error(`${label} image request failed (${String(response.status)}): ${redactSecrets(text, input.apiKey).slice(0, ERROR_LIMIT)}`)
+  if (!response.ok) throw new Error(`${label} image request failed (${String(response.status)}) POST ${endpoint}: ${redactSecrets(text, input.apiKey).slice(0, ERROR_LIMIT)}`)
   let payload: unknown
   try {
     payload = JSON.parse(text)

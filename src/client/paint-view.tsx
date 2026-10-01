@@ -2,16 +2,42 @@
  * The “绘画” tab: parameters on the left, artboard + prompt composer in the
  * middle, the current project's history on the right (Cherry Studio layout).
  */
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { Bookmark, Copy, Download, ImagePlus, LoaderCircle, Maximize2, Palette, Sparkles, Square, Star, Trash2, X } from 'lucide-react'
 import type { AttachmentJson, GalleryItem } from '../gallery-types.js'
-import { capabilitiesOf, effectiveModel, type ProviderView, type SettingsView } from '../shared.js'
+import { PROTOCOL_LABELS, capabilitiesOf, effectiveModel, type ProviderView, type SettingsView } from '../shared.js'
 import { api, copyImage, downloadImage, imageUrl, uploadFiles } from './api.js'
 import type { Translate } from './i18n.js'
 import { Lightbox } from './lightbox.js'
+import { Select } from './select.js'
 import { RatioGlyph } from './widgets.js'
 
 const PARAMS_KEY = 'copylee-image-gen.paint.v1'
+const COMPOSER_KEY = 'copylee-image-gen.composer.h'
+const COMPOSER_MIN = 72
+
+/** Default cap for the auto-growing prompt box: 40% of the viewport. */
+function defaultComposerCap(): number {
+  return Math.round(window.innerHeight * 0.4)
+}
+
+function loadComposerCap(): number | null {
+  try {
+    const value = Number(localStorage.getItem(COMPOSER_KEY))
+    return Number.isFinite(value) && value >= COMPOSER_MIN ? value : null
+  } catch {
+    return null
+  }
+}
+
+function saveComposerCap(value: number | null): void {
+  try {
+    if (value === null) localStorage.removeItem(COMPOSER_KEY)
+    else localStorage.setItem(COMPOSER_KEY, String(Math.round(value)))
+  } catch {
+    // storage unavailable: the height simply resets next time
+  }
+}
 const QUALITIES = ['auto', 'low', 'medium', 'high'] as const
 
 interface ParamState {
@@ -83,6 +109,46 @@ export function PaintView(props: {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState<number | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const promptRef = useRef<HTMLTextAreaElement>(null)
+  // Height fixed by dragging the grip; null = auto-grow.
+  const [composerCap, setComposerCap] = useState<number | null>(loadComposerCap)
+
+  // Default: grow with the content up to 40vh, then scroll inside.
+  // After a drag the box keeps the dragged height (double-click the grip to go back to auto).
+  useLayoutEffect(() => {
+    const area = promptRef.current
+    if (area === null) return
+    const max = Math.round(window.innerHeight * 0.7)
+    if (composerCap !== null) {
+      area.style.height = `${String(Math.min(Math.max(composerCap, COMPOSER_MIN), max))}px`
+      return
+    }
+    area.style.height = 'auto'
+    area.style.height = `${String(Math.min(Math.max(area.scrollHeight, COMPOSER_MIN), defaultComposerCap()))}px`
+  }, [prompt, composerCap])
+
+  /** Drag the grip above the prompt box to change its height cap. */
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const area = promptRef.current
+    if (area === null) return
+    event.preventDefault()
+    const startY = event.clientY
+    const startHeight = area.getBoundingClientRect().height
+    const max = Math.round(window.innerHeight * 0.7)
+    let next = startHeight
+    const onMove = (move: PointerEvent): void => {
+      next = Math.min(max, Math.max(COMPOSER_MIN, startHeight + (startY - move.clientY)))
+      area.style.height = `${String(next)}px`
+    }
+    const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      setComposerCap(next)
+      saveComposerCap(next)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
 
   // Fall back to a ready provider when the remembered one is not usable.
   const provider = providers.find(entry => entry.id === params.providerId)
@@ -202,17 +268,25 @@ export function PaintView(props: {
           : <>
             <div className="dig-field">
               <label className="dig-label" htmlFor="dig-provider">{t('provider')}</label>
-              <select id="dig-provider" className="dig-select" value={provider?.id ?? ''} onChange={event => selectProvider(event.target.value)}>
-                {providers.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-              </select>
+              <Select
+                id="dig-provider"
+                label={t('provider')}
+                value={provider?.id ?? ''}
+                options={providers.map(entry => ({ value: entry.id, label: entry.name, ...(entry.preset === true ? {} : { detail: PROTOCOL_LABELS[entry.protocol] }) }))}
+                onChange={selectProvider}
+              />
             </div>
             <div className="dig-field">
               <label className="dig-label" htmlFor="dig-model">{t('model')}</label>
-              {provider !== undefined && provider.models.length > 0
-                ? <select id="dig-model" className="dig-select" value={model} onChange={event => update({ providerId: provider.id, model: event.target.value })}>
-                  {(provider.models.includes(model) || model.length === 0 ? provider.models : [model, ...provider.models]).map(id => <option key={id} value={id}>{id}</option>)}
-                </select>
-                : <input id="dig-model" className="dig-input" value={model} onChange={event => update({ providerId: provider?.id ?? '', model: event.target.value })} />}
+              <Select
+                id="dig-model"
+                label={t('model')}
+                editable
+                editablePlaceholder={t('modelFilter')}
+                value={model}
+                options={(provider === undefined ? [] : provider.models.includes(model) || model.length === 0 ? provider.models : [model, ...provider.models]).map(id => ({ value: id, label: id }))}
+                onChange={next => update({ providerId: provider?.id ?? '', model: next })}
+              />
             </div>
             {caps !== undefined && caps.ratios.length > 0 && <div className="dig-field">
               <span className="dig-label">{t('ratio')}</span>
@@ -309,6 +383,24 @@ export function PaintView(props: {
       </div>
       {error !== null && <div className="dig-error" role="alert">{error}</div>}
       <div className="dig-composer">
+        <div
+          className="dig-composer-grip"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={t('resizeComposer')}
+          title={t('resizeComposer')}
+          tabIndex={0}
+          onPointerDown={startResize}
+          onDoubleClick={() => { setComposerCap(null); saveComposerCap(null) }}
+          onKeyDown={event => {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+            event.preventDefault()
+            const current = promptRef.current?.getBoundingClientRect().height ?? COMPOSER_MIN
+            const next = Math.min(Math.round(window.innerHeight * 0.7), Math.max(COMPOSER_MIN, current + (event.key === 'ArrowUp' ? 24 : -24)))
+            setComposerCap(next)
+            saveComposerCap(next)
+          }}
+        />
         {references.length > 0 && <div className="dig-refs">
           {references.map(ref => <div key={ref.attachmentId} className="dig-ref" style={{ width: 40, height: 40 }}>
             <img src={imageUrl(ref)} alt="" />
@@ -316,9 +408,10 @@ export function PaintView(props: {
           </div>)}
         </div>}
         <textarea
+          ref={promptRef}
           value={prompt}
           placeholder={t('promptPlaceholder')}
-          rows={2}
+          rows={3}
           onChange={event => setPrompt(event.target.value)}
           onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
             const files = [...event.clipboardData.files].filter(file => file.type.startsWith('image/'))

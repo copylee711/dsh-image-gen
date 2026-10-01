@@ -23,3 +23,11 @@ describe('SiliconFlow adapter', () => {
     await expect(generateSiliconFlowImage({ ...base, signal: AbortSignal.timeout(5000), fetch: net.fetch })).rejects.toThrow(/429.*quota/)
   })
 })
+
+describe('SiliconFlow base URL', () => {
+  it('adds /v1 to a bare host', async () => {
+    const net = scriptedFetch((_url, _init, index) => index === 0 ? json({ images: [{ url: 'https://cdn.example/x.png' }] }) : png())
+    await generateSiliconFlowImage({ ...base, baseURL: 'https://api.siliconflow.cn', signal: AbortSignal.timeout(5000), fetch: net.fetch })
+    expect(net.calls[0]?.url).toBe('https://api.siliconflow.cn/v1/images/generations')
+  })
+})

@@ -48,4 +48,23 @@ describe('ModelScope adapter', () => {
     setTimeout(() => controller.abort(new Error('stop')), 5)
     await expect(run).rejects.toThrow(/stop/)
   })
+
+  it('adds /v1 when the base URL is the bare host from the official sample', async () => {
+    for (const baseURL of ['https://api-inference.modelscope.cn', 'https://api-inference.modelscope.cn/']) {
+      const net = scriptedFetch((url, _init, index) => {
+        if (index === 0) return json({ task_id: 't-9' })
+        if (url.includes('/tasks/')) return json({ task_status: 'SUCCEED', output_images: ['https://cdn.example/z.png'] })
+        return png()
+      })
+      await generateModelScopeImage({ ...base, baseURL, signal: AbortSignal.timeout(5000), fetch: net.fetch })
+      expect(net.calls[0]?.url).toBe('https://api-inference.modelscope.cn/v1/images/generations')
+      expect(net.calls[1]?.url).toBe('https://api-inference.modelscope.cn/v1/tasks/t-9')
+    }
+  })
+
+  it('names the failing URL in HTTP errors', async () => {
+    const net = scriptedFetch(() => new Response('404 page not found', { status: 404 }))
+    await expect(generateModelScopeImage({ ...base, signal: AbortSignal.timeout(5000), fetch: net.fetch }))
+      .rejects.toThrow('(404) POST https://api-inference.modelscope.cn/v1/images/generations')
+  })
 })
