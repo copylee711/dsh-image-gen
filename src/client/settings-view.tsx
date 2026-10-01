@@ -47,6 +47,19 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
   const [keyInput, setKeyInput] = useState('')
   const [test, setTest] = useState<TestState>({ running: false })
   const [proxyTest, setProxyTest] = useState<TestState>({ running: false })
+  const [systemProxy, setSystemProxy] = useState<{ loading: boolean; system: { url: string; source: string } | null }>({ loading: true, system: null })
+  const detectProxy = (): void => {
+    setSystemProxy(current => ({ ...current, loading: true }))
+    api.proxyStatus().then(result => setSystemProxy({ loading: false, system: result.system }), () => setSystemProxy({ loading: false, system: null }))
+  }
+  useEffect(detectProxy, [])
+  const runProxyTest = (target: string): void => {
+    setProxyTest({ running: true })
+    api.testProxy(target).then(
+      result => setProxyTest({ running: false, ok: result.ok, message: result.latencyMs === undefined ? result.message : `${result.message} · ${String(result.latencyMs)}ms` }),
+      (failure: unknown) => setProxyTest({ running: false, ok: false, message: String(failure) }),
+    )
+  }
   const [confirmDelete, setConfirmDelete] = useState<ProviderEntry | null>(null)
   const [sizesText, setSizesText] = useState('')
   const [sizesError, setSizesError] = useState<string | null>(null)
@@ -75,6 +88,17 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
     return <div className="dig-root" style={{ padding: 24 }}>{error ?? <LoaderCircle size={18} className="dig-spin" />}</div>
   }
 
+  const systemLabel = (): string => systemProxy.system === null
+    ? t('proxySystemMissing')
+    : `${t('proxySystemShort')} ${systemProxy.system.url}`
+  /** Where a provider's requests actually go, for the hint under its proxy chips. */
+  const routeLabel = (mode: ProviderEntry['proxy']['mode']): string => {
+    if (mode === 'direct') return t('proxyDirect')
+    if (mode === 'system') return systemLabel()
+    if (draft.proxy.mode === 'system') return systemLabel()
+    if (draft.proxy.mode === 'custom' && draft.proxy.url.length > 0) return draft.proxy.url
+    return t('proxyDirect')
+  }
   const patchEntry = (patch: Partial<ProviderEntry>): void => {
     setDraft(current => current === null ? current : {
       ...current,
@@ -163,25 +187,33 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
         ? <>
           <h2>{t('globalProxy')}</h2>
           <p className="dig-hint" style={{ margin: 0 }}>{t('globalProxyHint')}</p>
-          <div className="dig-row">
-            <Switch checked={draft.proxy.enabled} label={t('globalProxy')} onChange={enabled => setDraft({ ...draft, proxy: { ...draft.proxy, enabled } })} />
-            <span>{t('enabled')}</span>
+          <div className="dig-chips" role="radiogroup" aria-label={t('globalProxy')}>
+            {(['off', 'system', 'custom'] as const).map(mode => <button key={mode} type="button" className="dig-chip" role="radio" aria-checked={draft.proxy.mode === mode} aria-pressed={draft.proxy.mode === mode} onClick={() => {
+              setDraft({ ...draft, proxy: { ...draft.proxy, mode, enabled: mode !== 'off' } })
+              setProxyTest({ running: false })
+            }}>
+              {mode === 'off' ? t('proxyOff') : mode === 'system' ? t('proxySystem') : t('proxyCustom')}
+            </button>)}
           </div>
-          <div className="dig-field">
+          {draft.proxy.mode === 'system' && <div className="dig-field">
+            <div className={systemProxy.system === null && !systemProxy.loading ? 'dig-notice dig-notice-warn' : 'dig-notice'}>
+              {systemProxy.loading ? t('proxyDetecting') : systemProxy.system === null ? t('proxyNotFound') : t('proxyDetected', { url: systemProxy.system.url, source: systemProxy.system.source })}
+            </div>
+            <div className="dig-row">
+              <button type="button" className="dig-btn dig-btn-sm" disabled={systemProxy.loading} onClick={detectProxy}>{t('redetect')}</button>
+              <button type="button" className="dig-btn dig-btn-sm" disabled={systemProxy.system === null || proxyTest.running} onClick={() => runProxyTest('system')}>{proxyTest.running ? t('testing') : t('testProxy')}</button>
+              {proxyTest.message !== undefined && <span className={`dig-test-result ${proxyTest.ok === true ? 'dig-test-ok' : 'dig-test-fail'}`}>{proxyTest.message}</span>}
+            </div>
+          </div>}
+          {draft.proxy.mode === 'custom' && <div className="dig-field">
             <label className="dig-label" htmlFor="dig-proxy-url">{t('proxyUrl')}</label>
             <div className="dig-row">
               <input id="dig-proxy-url" className="dig-input" placeholder="http://127.0.0.1:7890" value={draft.proxy.url} onChange={event => setDraft({ ...draft, proxy: { ...draft.proxy, url: event.target.value } })} />
-              <button type="button" className="dig-btn dig-btn-sm" disabled={draft.proxy.url.trim().length === 0 || proxyTest.running} onClick={() => {
-                setProxyTest({ running: true })
-                api.testProxy(draft.proxy.url.trim()).then(
-                  result => setProxyTest({ running: false, ok: result.ok, message: result.latencyMs === undefined ? result.message : `${result.message} · ${String(result.latencyMs)}ms` }),
-                  (failure: unknown) => setProxyTest({ running: false, ok: false, message: String(failure) }),
-                )
-              }}>{proxyTest.running ? t('testing') : t('testProxy')}</button>
+              <button type="button" className="dig-btn dig-btn-sm" disabled={draft.proxy.url.trim().length === 0 || proxyTest.running} onClick={() => runProxyTest(draft.proxy.url.trim())}>{proxyTest.running ? t('testing') : t('testProxy')}</button>
             </div>
             <span className="dig-hint">{t('proxyUrlHint')}</span>
             {proxyTest.message !== undefined && <span className={`dig-test-result ${proxyTest.ok === true ? 'dig-test-ok' : 'dig-test-fail'}`}>{proxyTest.message}</span>}
-          </div>
+          </div>}
           <div className="dig-field">
             <label className="dig-label" htmlFor="dig-no-proxy">{t('noProxy')}</label>
             <input id="dig-no-proxy" className="dig-input" value={draft.proxy.noProxy.join(', ')} onChange={event => setDraft({ ...draft, proxy: { ...draft.proxy, noProxy: event.target.value.split(/[,\s]+/).filter(item => item.length > 0) } })} />
@@ -255,17 +287,17 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
             defaultModel={entry.defaultModel}
             fetchDisabled={entry.baseURL.length === 0}
             onChange={next => patchEntry(next)}
-            onFetch={async () => (await api.models({ providerId: entry.id, entry, ...(keyInput.trim().length > 0 ? { key: keyInput.trim() } : {}) })).models}
+            onFetch={async () => { const result = await api.models({ providerId: entry.id, entry, ...(keyInput.trim().length > 0 ? { key: keyInput.trim() } : {}) }); return { models: result.models, imageModels: result.imageModels } }}
           />
           <div className="dig-field">
             <span className="dig-label">{t('proxy')}</span>
             <div className="dig-chips" role="radiogroup" aria-label={t('proxy')}>
-              {(['inherit', 'direct', 'custom'] as const).map(mode => <button key={mode} type="button" className="dig-chip" role="radio" aria-checked={entry.proxy.mode === mode} aria-pressed={entry.proxy.mode === mode} onClick={() => patchEntry({ proxy: mode === 'custom' ? { mode, url: entry.proxy.url ?? '' } : { mode } })}>
-                {mode === 'inherit' ? t('proxyInherit') : mode === 'direct' ? t('proxyDirect') : t('proxyCustom')}
+              {(['inherit', 'direct', 'system', 'custom'] as const).map(mode => <button key={mode} type="button" className="dig-chip" role="radio" aria-checked={entry.proxy.mode === mode} aria-pressed={entry.proxy.mode === mode} onClick={() => patchEntry({ proxy: mode === 'custom' ? { mode, url: entry.proxy.url ?? '' } : { mode } })}>
+                {mode === 'inherit' ? t('proxyInherit') : mode === 'direct' ? t('proxyDirect') : mode === 'system' ? t('proxySystemShort') : t('proxyCustom')}
               </button>)}
             </div>
             {entry.proxy.mode === 'custom' && <input className="dig-input" placeholder="socks5://127.0.0.1:1080" value={entry.proxy.url ?? ''} onChange={event => patchEntry({ proxy: { mode: 'custom', url: event.target.value } })} />}
-            {entry.proxy.mode === 'inherit' && <span className="dig-hint">{draft.proxy.enabled && draft.proxy.url.length > 0 ? `→ ${draft.proxy.url}` : `→ ${t('proxyDirect')}`}</span>}
+            {entry.proxy.mode !== 'custom' && <span className="dig-hint">→ {routeLabel(entry.proxy.mode)}</span>}
           </div>
           {entry.protocol === 'openai-compat' && <details className="dig-field">
             <summary className="dig-label" style={{ cursor: 'pointer', justifyContent: 'flex-start' }}>{t('compatAdvanced')}</summary>

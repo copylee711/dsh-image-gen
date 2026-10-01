@@ -2,7 +2,7 @@
  * Global “绘画” page mounted from the left sidebar. Not bound to any DSH
  * workspace or session: projects here are the gallery's own grouping.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Bookmark, Images, Palette, Pencil, Settings, Trash2 } from 'lucide-react'
 import { DEFAULT_PROJECT_ID, type FavoritePrompt, type GalleryItem } from '../gallery-types.js'
 import type { SettingsView } from '../shared.js'
@@ -186,12 +186,10 @@ function PromptsView({ t, refreshKey, onUse, onError }: { t: Translate; refreshK
       {prompts.length === 0 && <div className="dig-empty"><Bookmark size={32} strokeWidth={1.4} />{t('noPrompts')}</div>}
       {prompts.map(prompt => <div key={prompt.id} className="dig-prompt-row">
         {editing === prompt.id
-          ? <textarea
-            className="dig-textarea dig-prompt-text"
-            autoFocus
-            rows={Math.min(8, Math.max(2, draft.split('\n').length))}
+          ? <AutoTextarea
+            className="dig-textarea dig-prompt-text dig-prompt-edit"
             value={draft}
-            onChange={event => setDraft(event.target.value)}
+            onChange={setDraft}
             onBlur={() => commit(prompt.id)}
             onKeyDown={event => {
               if (event.key === 'Escape') {
@@ -208,4 +206,32 @@ function PromptsView({ t, refreshKey, onUse, onError }: { t: Translate; refreshK
       </div>)}
     </div>
   </div>
+}
+
+/**
+ * Textarea that opens at the height of its whole text and keeps growing
+ * while typing (up to 70% of the viewport, then scrolls), with the caret
+ * placed at the end.
+ */
+function AutoTextarea({ value, onChange, onBlur, onKeyDown, className }: {
+  value: string
+  onChange: (value: string) => void
+  onBlur: () => void
+  onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void
+  className?: string
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    const area = ref.current
+    if (area === null) return
+    area.style.height = 'auto'
+    area.style.height = `${String(Math.min(Math.max(area.scrollHeight + 2, 96), Math.round(window.innerHeight * 0.7)))}px`
+  }, [value])
+  useEffect(() => {
+    const area = ref.current
+    if (area === null) return
+    area.focus()
+    area.setSelectionRange(area.value.length, area.value.length)
+  }, [])
+  return <textarea ref={ref} className={className} value={value} onChange={event => onChange(event.target.value)} onBlur={onBlur} onKeyDown={onKeyDown} />
 }

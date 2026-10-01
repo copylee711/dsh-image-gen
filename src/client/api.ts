@@ -7,6 +7,7 @@ import {
   KEY_ROUTE,
   MODELS_ROUTE,
   PAINT_ROUTE,
+  PROXY_STATUS_ROUTE,
   SETTINGS_ROUTE,
   TEST_ROUTE,
   type GlobalProxy,
@@ -52,8 +53,9 @@ export const api = {
   test: (input: { providerId: string; entry?: ProviderEntry; key?: string; proxy?: GlobalProxy }) =>
     call<{ ok: boolean; message: string; latencyMs?: number }>(TEST_ROUTE, input),
   testProxy: (proxyUrl: string) => call<{ ok: boolean; message: string; latencyMs?: number }>(TEST_ROUTE, { proxyUrl }),
-  models: (input: { providerId: string; entry?: ProviderEntry; key?: string; all?: boolean }) =>
-    call<{ models: string[]; total: number }>(MODELS_ROUTE, input),
+  models: (input: { providerId: string; entry?: ProviderEntry; key?: string }) =>
+    call<{ models: string[]; imageModels: string[]; total: number }>(MODELS_ROUTE, input),
+  proxyStatus: () => call<{ system: { url: string; source: string; bypass: string[] } | null }>(PROXY_STATUS_ROUTE),
   paint: (input: {
     providerId: string
     model?: string

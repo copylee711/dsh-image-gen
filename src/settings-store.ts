@@ -5,6 +5,7 @@ import {
   PROVIDER_PROTOCOLS,
   defaultSettings,
   type CompatOptions,
+  type GlobalProxyMode,
   type PluginSettings,
   type ProviderEntry,
   type ProviderProtocol,
@@ -46,7 +47,7 @@ export function normalizeSettings(raw: unknown): PluginSettings {
     providers,
     activeProvider,
     proxy: {
-      enabled: proxyRaw.enabled === true,
+      ...globalProxyMode(proxyRaw),
       url: typeof proxyRaw.url === 'string' ? proxyRaw.url.trim() : '',
       noProxy: Array.isArray(proxyRaw.noProxy)
         ? proxyRaw.noProxy.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(item => item.length > 0)
@@ -74,7 +75,7 @@ function normalizeProvider(raw: unknown): ProviderEntry | undefined {
     ? [...new Set(input.models.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(item => item.length > 0))]
     : []
   const proxyRaw = typeof input.proxy === 'object' && input.proxy !== null ? input.proxy as Record<string, unknown> : {}
-  const mode: ProxyMode = proxyRaw.mode === 'direct' || proxyRaw.mode === 'custom' ? proxyRaw.mode : 'inherit'
+  const mode: ProxyMode = proxyRaw.mode === 'direct' || proxyRaw.mode === 'custom' || proxyRaw.mode === 'system' ? proxyRaw.mode : 'inherit'
   const proxyUrl = typeof proxyRaw.url === 'string' ? proxyRaw.url.trim() : ''
   const entry: ProviderEntry = {
     id,
@@ -120,11 +121,22 @@ function normalizeCompat(raw: unknown): CompatOptions | undefined {
   return out
 }
 
+/**
+ * Global proxy mode with migration: settings from ≤0.1.2 only had
+ * `enabled` (+ url), which meant a custom proxy when on.
+ */
+function globalProxyMode(raw: Record<string, unknown>): { mode: GlobalProxyMode; enabled: boolean } {
+  const mode: GlobalProxyMode = raw.mode === 'off' || raw.mode === 'system' || raw.mode === 'custom'
+    ? raw.mode
+    : raw.enabled === true ? 'custom' : 'off'
+  return { mode, enabled: mode !== 'off' }
+}
+
 /** Validation problems that should block a save (shown in the settings UI). */
 export function validateSettings(settings: PluginSettings): string[] {
   const problems: string[] = []
-  if (settings.proxy.enabled) {
-    const problem = settings.proxy.url.length === 0 ? '已启用全局代理但未填写代理地址' : validateProxyUrl(settings.proxy.url)
+  if (settings.proxy.mode === 'custom') {
+    const problem = settings.proxy.url.length === 0 ? '已选择自定义代理但未填写代理地址' : validateProxyUrl(settings.proxy.url)
     if (problem !== undefined) problems.push(`全局代理：${problem}`)
   }
   for (const entry of settings.providers) {

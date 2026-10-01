@@ -11,15 +11,36 @@ import type { Socket } from 'node:net'
 import { Agent, ProxyAgent, fetch as undiciFetch, type Dispatcher } from 'undici'
 import { SocksClient } from 'socks'
 import type { GlobalProxy, ProviderProxy } from './shared.js'
+import { detectSystemProxy, type SystemProxy } from './system-proxy.js'
 
 /** Minimal fetch signature the adapters depend on. */
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
 /** The proxy a request should use, or `undefined` for a direct connection. */
+/** Error text when the system proxy is selected but nothing was detected. */
+export const SYSTEM_PROXY_MISSING = '已选择「系统代理」但未检测到系统代理：请在系统设置里开启代理（或设置 HTTPS_PROXY），或改用自定义代理地址'
+
+/** Global mode, tolerating settings objects from before `mode` existed. */
+export function globalMode(global: GlobalProxy): GlobalProxy['mode'] {
+  return global.mode ?? (global.enabled ? 'custom' : 'off')
+}
+
+/** Whether resolving this provider's route needs the detected system proxy. */
+export function needsSystemProxy(proxy: ProviderProxy | undefined, global: GlobalProxy): boolean {
+  const mode = proxy?.mode ?? 'inherit'
+  return mode === 'system' || (mode === 'inherit' && globalMode(global) === 'system')
+}
+
+/**
+ * The proxy a request should use, or `undefined` for a direct connection.
+ * `system` is the detected OS proxy; required (else this throws) when the
+ * provider or the inherited global mode is `system`.
+ */
 export function resolveProxyUrl(
   target: string,
   proxy: ProviderProxy | undefined,
   global: GlobalProxy,
+  system?: SystemProxy | null,
 ): string | undefined {
   const mode = proxy?.mode ?? 'inherit'
   if (mode === 'direct') return undefined
@@ -27,7 +48,12 @@ export function resolveProxyUrl(
     const url = proxy?.url?.trim() ?? ''
     return url.length > 0 ? url : undefined
   }
-  if (!global.enabled) return undefined
+  if (needsSystemProxy(proxy, global)) {
+    if (system === undefined || system === null) throw new Error(SYSTEM_PROXY_MISSING)
+    if (bypassesProxy(target, [...system.bypass, ...global.noProxy])) return undefined
+    return system.url
+  }
+  if (globalMode(global) !== 'custom') return undefined
   const url = global.url.trim()
   if (url.length === 0) return undefined
   if (bypassesProxy(target, global.noProxy)) return undefined
@@ -46,6 +72,17 @@ export function bypassesProxy(target: string, patterns: readonly string[]): bool
     const pattern = raw.trim().toLowerCase()
     if (pattern.length === 0) continue
     if (pattern === '*') return true
+    // Windows ProxyOverride: `<local>` means hosts without a dot.
+    if (pattern === '<local>') {
+      if (!host.includes('.') && !host.includes(':')) return true
+      continue
+    }
+    if (pattern.includes('*') && !pattern.startsWith('*.')) {
+      // Generic globs from Windows ProxyOverride, e.g. `192.168.*`, `*internal*`.
+      const glob = new RegExp(`^${pattern.split('*').map(part => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`)
+      if (glob.test(host)) return true
+      continue
+    }
     if (pattern.startsWith('*.')) {
       const suffix = pattern.slice(1)
       if (host.endsWith(suffix) || host === pattern.slice(2)) return true
@@ -137,7 +174,8 @@ function socksAgent(proxy: URL): Agent {
  */
 export function providerFetch(proxy: ProviderProxy | undefined, global: GlobalProxy): FetchLike {
   return async (url, init) => {
-    const proxyUrl = resolveProxyUrl(url, proxy, global)
+    const system = needsSystemProxy(proxy, global) ? await detectSystemProxy() : undefined
+    const proxyUrl = resolveProxyUrl(url, proxy, global, system)
     if (proxyUrl === undefined) return fetch(url, init)
     const dispatcher = dispatcherFor(proxyUrl)
     let request: RequestInit = init ?? {}

@@ -160,7 +160,9 @@ export const STYLE = String.raw`
 .dig-prompt-item:hover .dig-icon-btn,.dig-prompt-item-active .dig-icon-btn{opacity:1}
 .dig-prompt-foot{padding:6px 8px 2px;border-top:.5px solid var(--dig-border-soft);color:var(--dig-fg3);font-size:11px}
 .dig-bookmark-btn[aria-pressed=true]{color:var(--dig-accent)}
-.dig-modal-wide{width:min(560px,100%)}
+.dig-notice-warn{background:color-mix(in srgb,#f5a623 12%,transparent);color:var(--dig-fg)}
+.dig-prompt-edit{resize:vertical;min-height:96px;font-size:13px;line-height:1.6;padding:8px 10px}
+.dig-modal-wide{width:min(620px,100%)}
 .dig-models{display:flex;flex-direction:column;border:.5px solid var(--dsw-alias-border-l4,var(--dig-border));border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-layer-3,var(--dig-bg));overflow:hidden}
 .dig-model-row{display:flex;align-items:center;gap:8px;min-height:36px;padding:0 6px 0 12px;border-bottom:.5px solid var(--dig-border-soft)}
 .dig-model-row:hover{background:var(--dig-hover)}
@@ -177,6 +179,7 @@ export const STYLE = String.raw`
 .dig-pick-list{max-height:min(46vh,420px);border:.5px solid var(--dig-border-soft);border-radius:8px;padding:4px}
 .dig-pick-row{display:flex;align-items:center;gap:10px;min-height:32px;padding:0 8px;border-radius:6px;cursor:pointer}
 .dig-pick-row:hover{background:var(--dig-hover)}
+.dig-pick-added{cursor:default;color:var(--dig-fg3)}
 .dig-pick-row input{accent-color:var(--dig-accent);margin:0}
 .dig-composer-grip{height:10px;margin:-10px -12px -2px -14px;cursor:ns-resize;display:flex;align-items:center;justify-content:center;touch-action:none}
 .dig-composer-grip::before{content:"";width:36px;height:4px;border-radius:2px;background:var(--dig-border);opacity:0;transition:opacity .15s}

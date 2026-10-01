@@ -13,7 +13,7 @@ import { GalleryDb } from './gallery-db.js'
 import { CONVERSATION_PROJECT_ID } from './gallery-types.js'
 import { serveImport } from './import-route.js'
 import { parseImageAttachmentRef, resolveReferenceImages } from './reference-image.js'
-import { galleryRoute, imageRoute, keyRoute, modelsRoute, paintRoute, settingsRoute, testRoute } from './routes.js'
+import { galleryRoute, imageRoute, proxyStatusRoute, keyRoute, modelsRoute, paintRoute, settingsRoute, testRoute } from './routes.js'
 import { generateAndStore, saveImageCopy, toAttachmentJson, type PluginServices } from './services.js'
 import { SettingsStore } from './settings-store.js'
 import {
@@ -24,6 +24,7 @@ import {
   KEY_ROUTE,
   MODELS_ROUTE,
   PAINT_ROUTE,
+  PROXY_STATUS_ROUTE,
   PACKAGE_NAME,
   PLUGIN_SLUG,
   SETTINGS_ROUTE,
@@ -125,6 +126,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   route('exact', MODELS_ROUTE, modelsRoute(services))
   route('exact', PAINT_ROUTE, paintRoute(services))
   route('exact', GALLERY_ROUTE, galleryRoute(services))
+  route('exact', PROXY_STATUS_ROUTE, proxyStatusRoute())
 
   // Context line: which providers the model may name. Cached and refreshed on
   // settings/key changes so prompt assembly never waits on disk.

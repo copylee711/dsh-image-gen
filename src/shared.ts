@@ -29,6 +29,8 @@ export const TEST_ROUTE = `${ROUTE_BASE}/test`
 export const MODELS_ROUTE = `${ROUTE_BASE}/models`
 /** Generate from the paintings page. */
 export const PAINT_ROUTE = `${ROUTE_BASE}/paint`
+/** Detected system proxy for the settings page. */
+export const PROXY_STATUS_ROUTE = `${ROUTE_BASE}/proxy-status`
 /** Global gallery (projects, items, favorite prompts). Prefix route. */
 export const GALLERY_ROUTE = `${ROUTE_BASE}/gallery`
 
@@ -60,7 +62,10 @@ export const PROTOCOL_LABELS: Record<ProviderProtocol, string> = {
 }
 
 /** How one provider entry reaches the network. */
-export type ProxyMode = 'inherit' | 'direct' | 'custom'
+export type ProxyMode = 'inherit' | 'direct' | 'system' | 'custom'
+
+/** Plugin-wide proxy mode. */
+export type GlobalProxyMode = 'off' | 'system' | 'custom'
 
 export interface ProviderProxy {
   mode: ProxyMode
@@ -98,6 +103,9 @@ export interface ProviderEntry {
 
 /** Plugin-wide proxy. */
 export interface GlobalProxy {
+  /** off = direct, system = OS/env proxy (auto-detected), custom = `url`. */
+  mode: GlobalProxyMode
+  /** Derived from `mode` (kept for settings written by older versions). */
   enabled: boolean
   url: string
   /** Hosts that bypass the proxy: exact host, `.suffix`, `*.suffix`, or `*`. */
@@ -226,7 +234,7 @@ export function defaultSettings(): PluginSettings {
     version: 1,
     providers: PRESET_PROVIDERS.map(entry => structuredClone(entry)),
     activeProvider: 'modelscope',
-    proxy: { enabled: false, url: '', noProxy: ['localhost', '127.0.0.1', '::1'] },
+    proxy: { mode: 'off', enabled: false, url: '', noProxy: ['localhost', '127.0.0.1', '::1'] },
     saveToWorkspace: true,
     workspaceFolder: PLUGIN_SLUG,
     imageDir: '',

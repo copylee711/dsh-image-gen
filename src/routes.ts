@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { CONVERSATION_PROJECT_ID, DEFAULT_PROJECT_ID, type AttachmentJson, type GalleryItem } from './gallery-types.js'
-import { providerFetch, resetDispatchers, validateProxyUrl, type FetchLike } from './http.js'
+import { SYSTEM_PROXY_MISSING, providerFetch, resetDispatchers, validateProxyUrl, type FetchLike } from './http.js'
+import { detectSystemProxy, resetSystemProxyCache } from './system-proxy.js'
 import { parseImageAttachmentRef } from './reference-image.js'
 import { ensureVersionedBase } from './download.js'
 import { RouteError, jsonRoute, readJsonBody, requestSignal, sendJson, str, stringArray } from './route-util.js'
@@ -61,6 +62,7 @@ export function settingsRoute(services: PluginServices) {
         throw new RouteError(400, error instanceof Error ? error.message : String(error))
       }
       resetDispatchers()
+      resetSystemProxyCache()
     }
     return settingsView(services)
   })
@@ -120,7 +122,13 @@ export function modelIds(payload: unknown): string[] {
   return [...new Set(ids.filter(id => id.length > 0))].sort()
 }
 
-const IMAGE_MODEL_HINT = /image|imagen|seedream|flux|kolors|dall|cogview|wanx|sd|stable|diffusion|qwen-image|midjourney|hidream|playground|recraft|ideogram/i
+/** Heuristic for “looks like an image-generation model”. */
+export const IMAGE_MODEL_HINT = /image|imagen|nano-banana|dall-?e|seedream|seededit|flux|kolors|cogview|wanx|wan-?2|hunyuan-?image|kandinsky|majicflus|sd-?xl|sd3|stable-diffusion|diffusion|midjourney|hidream|playground|recraft|ideogram|grok-imagine/i
+
+/** Split a model list into all ids and the image-like subset. */
+export function classifyModels(ids: readonly string[]): { models: string[]; imageModels: string[] } {
+  return { models: [...ids], imageModels: ids.filter(id => IMAGE_MODEL_HINT.test(id)) }
+}
 
 /** Merge a draft entry from the browser over the stored one (test before save). */
 async function draftEntry(services: PluginServices, body: Record<string, unknown>): Promise<{ entry: ProviderEntry; proxy: GlobalProxy; key: string | undefined }> {
@@ -162,11 +170,16 @@ export function testRoute(services: PluginServices) {
     const body = await readJsonBody(req, SMALL_BODY)
     const signal = AbortSignal.timeout(20_000)
     const started = Date.now()
-    const proxyUrl = str(body.proxyUrl)?.trim()
+    let proxyUrl = str(body.proxyUrl)?.trim()
+    if (proxyUrl === 'system') {
+      const system = await detectSystemProxy({ refresh: true })
+      if (system === null) return { ok: false, message: SYSTEM_PROXY_MISSING }
+      proxyUrl = system.url
+    }
     if (proxyUrl !== undefined) {
       const problem = validateProxyUrl(proxyUrl)
       if (problem !== undefined) return { ok: false, message: problem }
-      const fetcher = services.fetch ?? providerFetch({ mode: 'custom', url: proxyUrl }, { enabled: false, url: '', noProxy: [] })
+      const fetcher = services.fetch ?? providerFetch({ mode: 'custom', url: proxyUrl }, { mode: 'off', enabled: false, url: '', noProxy: [] })
       try {
         const response = await fetcher(PROXY_PROBE_URL, { method: 'GET', signal })
         return { ok: response.status < 500, status: response.status, latencyMs: Date.now() - started, message: `代理可用（HTTP ${String(response.status)}）` }
@@ -182,7 +195,7 @@ export function testRoute(services: PluginServices) {
       const listed = await listModels(fetcher, entry, key, signal)
       const latencyMs = Date.now() - started
       if (listed.status === 401 || listed.status === 403) return { ok: false, status: listed.status, latencyMs, message: `API Key 无效或无权限（HTTP ${String(listed.status)}）` }
-      if (listed.status >= 200 && listed.status < 300) return { ok: true, status: listed.status, latencyMs, message: `连接成功，${String(listed.ids.length)} 个模型可用` }
+      if (listed.status >= 200 && listed.status < 300) return { ok: true, status: listed.status, latencyMs, message: `连接成功：共 ${String(listed.ids.length)} 个模型，其中 ${String(classifyModels(listed.ids).imageModels.length)} 个识别为生图模型` }
       // Some image endpoints have no /models; reaching the host still proves the network path.
       if (listed.status === 404 || listed.status === 405) return { ok: true, status: listed.status, latencyMs, message: '端点可达（该服务不提供模型列表，未校验 Key）' }
       return { ok: false, status: listed.status, latencyMs, message: `HTTP ${String(listed.status)}：${listed.text}` }
@@ -193,7 +206,12 @@ export function testRoute(services: PluginServices) {
   })
 }
 
-/** POST `{ providerId, entry?, key?, all? }` → model ids (image-like first unless `all`). */
+/** GET → the detected system proxy (always re-detected). */
+export function proxyStatusRoute() {
+  return jsonRoute(['GET', 'POST'], async () => ({ system: await detectSystemProxy({ refresh: true }) }))
+}
+
+/** POST `{ providerId, entry?, key? }` → every model id plus the image-like subset. */
 export function modelsRoute(services: PluginServices) {
   return jsonRoute(['POST'], async req => {
     const body = await readJsonBody(req, SMALL_BODY)
@@ -201,8 +219,7 @@ export function modelsRoute(services: PluginServices) {
     const fetcher = services.fetch ?? providerFetch(entry.proxy, proxy)
     const listed = await listModels(fetcher, entry, key, AbortSignal.timeout(20_000))
     if (listed.status < 200 || listed.status >= 300) throw new RouteError(502, `拉取模型失败（HTTP ${String(listed.status)}）：${listed.text}`)
-    const image = listed.ids.filter(id => IMAGE_MODEL_HINT.test(id))
-    return { models: body.all === true || image.length === 0 ? listed.ids : image, total: listed.ids.length }
+    return { ...classifyModels(listed.ids), total: listed.ids.length }
   })
 }
 

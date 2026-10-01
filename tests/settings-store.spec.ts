@@ -52,7 +52,7 @@ describe('normalizeSettings', () => {
 describe('validateSettings', () => {
   it('flags unusable proxies and endpoints', () => {
     const settings = defaultSettings()
-    settings.proxy = { enabled: true, url: '', noProxy: [] }
+    settings.proxy = { mode: 'custom', enabled: true, url: '', noProxy: [] }
     settings.providers[0] = { ...settings.providers[0]!, proxy: { mode: 'custom', url: 'ftp://x' }, baseURL: 'nope' }
     expect(validateSettings(settings)).toHaveLength(3)
     expect(validateSettings(defaultSettings())).toEqual([])

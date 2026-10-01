@@ -98,9 +98,11 @@ describe('routes', () => {
     await post('/key', { providerId: 'modelscope', key: 'ms-key-123456' })
     const result = await post('/test', { providerId: 'modelscope' })
     expect(result.body).toMatchObject({ ok: true })
+    expect(result.body.message).toContain('共 3 个模型，其中 2 个识别为生图模型')
     const models = await post('/models', { providerId: 'modelscope' })
-    expect(models.body.models).toEqual(['Qwen/Qwen-Image', 'black-forest-labs/FLUX.1-dev'])
-    expect((await post('/models', { providerId: 'modelscope', all: true })).body.total).toBe(3)
+    expect(models.body.models).toEqual(['Qwen/Qwen-Image', 'Qwen/Qwen3-8B', 'black-forest-labs/FLUX.1-dev'])
+    expect(models.body.imageModels).toEqual(['Qwen/Qwen-Image', 'black-forest-labs/FLUX.1-dev'])
+    expect(models.body.total).toBe(3)
   })
 
   it('paints N images into the chosen gallery project', async () => {
@@ -156,6 +158,14 @@ describe('routes', () => {
     await post('/gallery', { op: 'addFavoritePrompt', text: 'x' })
     expect((await post('/gallery', { op: 'revision' })).body.revision).toBe(first + 1)
     expect((await post('/gallery', { op: 'bogus' })).status).toBe(400)
+  })
+})
+
+describe('image model heuristic', () => {
+  it('recognizes image models without catching unrelated ids', async () => {
+    const { classifyModels } = await import('../src/routes.js')
+    const ids = ['gpt-image-2.5-flare', 'chatgpt-image-latest', 'dall-e-3', 'gpt-4o', 'o3-mini', 'Qwen/Qwen-Image-Edit', 'Qwen/Qwen3-8B', 'MusePublic/489_ckpt_FLUX_1', 'Kwai-Kolors/Kolors', 'stabilityai/stable-diffusion-3.5-large', 'deepseek-ai/DeepSeek-V3', 'text-embedding-3-small', 'tts-1-hd', 'whisper-1', 'gpt-4o-transcribe']
+    expect(classifyModels(ids).imageModels).toEqual(['gpt-image-2.5-flare', 'chatgpt-image-latest', 'dall-e-3', 'Qwen/Qwen-Image-Edit', 'MusePublic/489_ckpt_FLUX_1', 'Kwai-Kolors/Kolors', 'stabilityai/stable-diffusion-3.5-large'])
   })
 })
 

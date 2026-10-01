@@ -59,8 +59,8 @@ pnpm dsh plugin --profile web add git+https://github.com/copylee711/dsh-image-ge
 
 ## 代理
 
-- **全局代理**：只作用于本插件发出的生图请求，不会影响 DSH 的其他网络流量。支持 `http://`、`https://`、`socks5://`、`socks5h://`、`socks4://`，地址里可以带 `user:pass@`；还可以配置不走代理的主机（`localhost`、`.example.com`、`*.example.com`）。
-- **每个服务商单独设置**：「跟随全局」「直连」或「自定义代理地址」三选一。
+- **全局代理**：「关闭 / 系统代理（自动检测）/ 自定义」三选一，只作用于本插件的生图请求。系统代理依次读取 `HTTPS_PROXY` 等环境变量、Windows「Internet 选项」代理（含例外列表）、macOS 网络代理、GNOME 代理设置；自定义支持 `http://`、`https://`、`socks5://`、`socks5h://`、`socks4://`，可带 `user:pass@`。
+- **每个服务商单独设置**：「跟随全局」「直连」「系统代理」或「自定义代理地址」四选一。
 - 「测试代理」和「测试连接」走的是和正式请求相同的代理路径。
 
 ## Agent 工具

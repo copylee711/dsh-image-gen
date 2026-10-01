@@ -54,3 +54,31 @@ describe('validateProxyUrl', () => {
     expect(() => dispatcherFor('ftp://x')).toThrow()
   })
 })
+
+describe('system proxy mode', () => {
+  const system = { url: 'http://127.0.0.1:7897', source: 'test', bypass: ['<local>', '10.*'] }
+  const off = { mode: 'off' as const, enabled: false, url: '', noProxy: ['localhost'] }
+  const sys = { ...off, mode: 'system' as const, enabled: true }
+  it('uses the detected proxy for system and inherited-system modes', () => {
+    expect(resolveProxyUrl('https://api.openai.com/v1', { mode: 'system' }, off, system)).toBe(system.url)
+    expect(resolveProxyUrl('https://api.openai.com/v1', { mode: 'inherit' }, sys, system)).toBe(system.url)
+    expect(resolveProxyUrl('https://api.openai.com/v1', { mode: 'direct' }, sys, system)).toBeUndefined()
+    expect(resolveProxyUrl('https://api.openai.com/v1', { mode: 'inherit' }, off, system)).toBeUndefined()
+  })
+  it('honours system bypass (<local>, globs) plus the global no-proxy list', () => {
+    expect(resolveProxyUrl('http://intranet/x', { mode: 'system' }, off, system)).toBeUndefined()
+    expect(resolveProxyUrl('http://10.1.2.3/x', { mode: 'system' }, off, system)).toBeUndefined()
+    expect(resolveProxyUrl('http://localhost:8188/x', { mode: 'system' }, off, system)).toBeUndefined()
+  })
+  it('fails loudly when the system proxy is selected but missing', () => {
+    expect(() => resolveProxyUrl('https://api.openai.com/v1', { mode: 'system' }, off, null)).toThrow(/未检测到系统代理/)
+    expect(() => resolveProxyUrl('https://api.openai.com/v1', undefined, sys, undefined)).toThrow(/未检测到系统代理/)
+  })
+  it('migrates pre-0.1.3 global proxy settings', async () => {
+    const { normalizeSettings } = await import('../src/settings-store.js')
+    expect(normalizeSettings({ proxy: { enabled: true, url: 'http://p:1' } }).proxy).toMatchObject({ mode: 'custom', enabled: true })
+    expect(normalizeSettings({ proxy: { enabled: false } }).proxy).toMatchObject({ mode: 'off', enabled: false })
+    expect(normalizeSettings({ proxy: { mode: 'system' } }).proxy).toMatchObject({ mode: 'system', enabled: true })
+    expect(normalizeSettings({ providers: [{ id: 'openai', protocol: 'openai', proxy: { mode: 'system' } }] }).providers.find(entry => entry.id === 'openai')?.proxy).toEqual({ mode: 'system' })
+  })
+})

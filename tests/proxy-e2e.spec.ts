@@ -111,6 +111,29 @@ describe('providerFetch through real proxies', () => {
     expect(seen.socks).toBeGreaterThan(before)
   })
 
+  it('system mode routes through the proxy found in HTTPS_PROXY', async () => {
+    const { resetSystemProxyCache } = await import('../src/system-proxy.js')
+    const saved = { HTTPS_PROXY: process.env.HTTPS_PROXY, NO_PROXY: process.env.NO_PROXY, no_proxy: process.env.no_proxy }
+    // `localhost` (not 127.0.0.1) so a fresh dispatcher opens a new tunnel instead of reusing the earlier test's.
+    process.env.HTTPS_PROXY = `http://localhost:${String(port(httpProxy))}`
+    delete process.env.NO_PROXY
+    delete process.env.no_proxy
+    resetSystemProxyCache()
+    try {
+      const before = seen.http
+      const fetcher = providerFetch({ mode: 'system' }, { mode: 'off', enabled: false, url: '', noProxy: [] })
+      const echoed = await (await fetcher(`http://127.0.0.1:${String(port(target))}/via-system`)).json() as { path: string }
+      expect(echoed.path).toBe('/via-system')
+      expect(seen.http).toBeGreaterThan(before)
+    } finally {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[name]
+        else process.env[name] = value
+      }
+      resetSystemProxyCache()
+    }
+  })
+
   it('bypasses the global proxy for no-proxy hosts', async () => {
     const before = seen.http
     const fetcher = providerFetch(undefined, { enabled: true, url: `http://127.0.0.1:${String(port(httpProxy))}`, noProxy: ['127.0.0.1'] })
