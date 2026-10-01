@@ -1,0 +1,4 @@
+- insert:
+    - id: image-gen
+      name: dsh-image-gen
+      config: {}

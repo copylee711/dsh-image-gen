@@ -1,0 +1,139 @@
+/** Browser wrappers for the plugin's Host routes. */
+import type { AttachmentJson, FavoritePrompt, GalleryItem, GalleryPage, GalleryProject, GalleryQuery } from '../gallery-types.js'
+import {
+  GALLERY_ROUTE,
+  IMAGE_ROUTE,
+  IMPORT_ROUTE,
+  KEY_ROUTE,
+  MODELS_ROUTE,
+  PAINT_ROUTE,
+  SETTINGS_ROUTE,
+  TEST_ROUTE,
+  type GlobalProxy,
+  type PluginSettings,
+  type ProviderEntry,
+  type SettingsView,
+} from '../shared.js'
+
+export type ProjectSummary = GalleryProject & { count: number; cover?: AttachmentJson }
+
+async function call<T>(url: string, body?: unknown, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(url, {
+    method: body === undefined ? 'GET' : 'POST',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    ...(body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+    ...init,
+  })
+  const text = await response.text()
+  let payload: unknown
+  try {
+    payload = text.length === 0 ? {} : JSON.parse(text)
+  } catch {
+    // A reverse proxy cut or HTML error page: surface a readable message.
+    throw new Error(response.status === 504 ? '请求超时（反向代理中断），请重试' : `请求失败（HTTP ${String(response.status)}）`)
+  }
+  if (!response.ok) {
+    const message = (payload as { error?: unknown }).error
+    throw new Error(typeof message === 'string' ? message : `请求失败（HTTP ${String(response.status)}）`)
+  }
+  return payload as T
+}
+
+/** `<img src>` for one durable attachment. */
+export function imageUrl(attachment: AttachmentJson): string {
+  return `${IMAGE_ROUTE}?ref=${encodeURIComponent(JSON.stringify(attachment))}`
+}
+
+export const api = {
+  settings: () => call<SettingsView>(SETTINGS_ROUTE),
+  saveSettings: (settings: PluginSettings) => call<SettingsView>(SETTINGS_ROUTE, { settings }),
+  setKey: (providerId: string, key: string) => call<{ ok: boolean; keyConfigured: boolean }>(KEY_ROUTE, { providerId, key }),
+  test: (input: { providerId: string; entry?: ProviderEntry; key?: string; proxy?: GlobalProxy }) =>
+    call<{ ok: boolean; message: string; latencyMs?: number }>(TEST_ROUTE, input),
+  testProxy: (proxyUrl: string) => call<{ ok: boolean; message: string; latencyMs?: number }>(TEST_ROUTE, { proxyUrl }),
+  models: (input: { providerId: string; entry?: ProviderEntry; key?: string; all?: boolean }) =>
+    call<{ models: string[]; total: number }>(MODELS_ROUTE, input),
+  paint: (input: {
+    providerId: string
+    model?: string
+    prompt: string
+    negativePrompt?: string
+    aspectRatio?: string
+    imageSize?: string
+    quality?: string
+    seed?: number
+    count: number
+    references: AttachmentJson[]
+    projectId: string
+  }, signal?: AbortSignal) => call<{ items: GalleryItem[]; failures: string[] }>(PAINT_ROUTE, input, signal === undefined ? {} : { signal }),
+  importImages: (images: Array<{ data: string; mediaType: string; name?: string }>) =>
+    call<{ images: Array<{ attachment: AttachmentJson }>; failures: Array<{ index: number; error: string }> }>(IMPORT_ROUTE, { images }),
+  gallery: {
+    revision: () => call<{ revision: number }>(GALLERY_ROUTE, { op: 'revision' }),
+    projects: () => call<{ revision: number; projects: ProjectSummary[] }>(GALLERY_ROUTE, { op: 'projects' }),
+    list: (query: GalleryQuery) => call<GalleryPage & { revision: number }>(GALLERY_ROUTE, { op: 'list', ...query }),
+    update: (ids: string[], patch: { favorite?: boolean; projectId?: string }) => call<{ changed: number }>(GALLERY_ROUTE, { op: 'update', ids, ...patch }),
+    remove: (ids: string[]) => call<{ removed: number }>(GALLERY_ROUTE, { op: 'remove', ids }),
+    createProject: (name: string) => call<{ project: GalleryProject }>(GALLERY_ROUTE, { op: 'createProject', name }),
+    renameProject: (id: string, name: string) => call<unknown>(GALLERY_ROUTE, { op: 'renameProject', id, name }),
+    deleteProject: (id: string, deleteItems: boolean) => call<unknown>(GALLERY_ROUTE, { op: 'deleteProject', id, deleteItems }),
+    reorderProjects: (ids: string[]) => call<unknown>(GALLERY_ROUTE, { op: 'reorderProjects', ids }),
+    favoritePrompts: () => call<{ prompts: FavoritePrompt[] }>(GALLERY_ROUTE, { op: 'favoritePrompts' }),
+    addFavoritePrompt: (text: string) => call<{ prompt: FavoritePrompt }>(GALLERY_ROUTE, { op: 'addFavoritePrompt', text }),
+    removeFavoritePrompt: (id: string) => call<unknown>(GALLERY_ROUTE, { op: 'removeFavoritePrompt', id }),
+    importAttachments: (attachments: AttachmentJson[], projectId: string) => call<{ items: GalleryItem[] }>(GALLERY_ROUTE, { op: 'import', attachments, projectId }),
+  },
+}
+
+/** Read a picked file as base64 (no data: prefix). */
+export function fileToBase64(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result)
+      resolve(result.slice(result.indexOf(',') + 1))
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'))
+    reader.readAsDataURL(file)
+  })
+}
+
+/** Upload picked files as durable attachments. */
+export async function uploadFiles(files: readonly File[]): Promise<AttachmentJson[]> {
+  const images = await Promise.all(files.map(async file => ({ data: await fileToBase64(file), mediaType: file.type || 'image/png', name: file.name })))
+  const result = await api.importImages(images)
+  if (result.images.length === 0 && result.failures.length > 0) throw new Error(`上传失败：${result.failures.map(failure => failure.error).join(', ')}`)
+  return result.images.map(image => image.attachment)
+}
+
+/** Save an image to the user's disk. */
+export async function downloadImage(attachment: AttachmentJson, baseName = 'image'): Promise<void> {
+  const response = await fetch(imageUrl(attachment), { credentials: 'same-origin' })
+  if (!response.ok) throw new Error(`下载失败（HTTP ${String(response.status)}）`)
+  const blob = await response.blob()
+  const ext = attachment.mediaType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png'
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${baseName}.${ext}`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** Copy an image to the clipboard as PNG (the format browsers accept). */
+export async function copyImage(attachment: AttachmentJson): Promise<void> {
+  const response = await fetch(imageUrl(attachment), { credentials: 'same-origin' })
+  let blob = await response.blob()
+  if (blob.type !== 'image/png') {
+    const bitmap = await createImageBitmap(blob)
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
+    blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value === null ? reject(new Error('encode failed')) : resolve(value), 'image/png'))
+  }
+  await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+}

@@ -1,0 +1,13 @@
+dsh-image-gen (copylee711)
+Copyright (c) 2026 Copy — MIT License (see LICENSE)
+
+This product includes software adapted from shanliuling/dsh-image-gen
+(https://github.com/shanliuling/dsh-image-gen), licensed under the
+Apache License, Version 2.0 (see LICENSES/Apache-2.0.txt).
+
+Files derived from that project (modified: proxy-aware fetch injection,
+provider-entry plumbing, trimmed to the features this plugin ships):
+  src/google.ts, src/openai-compatible.ts, src/seedream.ts, src/dashscope.ts,
+  src/xai-params.ts, src/reference-image.ts, src/redact.ts,
+  src/workspace-save.ts, src/import-route.ts, src/system-prompt-service.d.ts,
+  and the corresponding specs under tests/.
