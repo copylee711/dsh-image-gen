@@ -43,7 +43,7 @@ export async function resolveReferenceImage(input: {
 }): Promise<ResolvedReferenceImage> {
   const images = await resolveReferenceImages(input)
   const image = images[images.length - 1]
-  if (image === undefined) throw new Error('edit_image requires a reference image')
+  if (image === undefined) throw new Error('edit_painting requires a reference image')
   return image
 }
 
@@ -77,7 +77,7 @@ export async function resolveReferenceImages(input: {
     equal: (left, right) => left.trim() === right.trim(),
   })
   if (sourceAttachmentIds !== undefined && sourcePaths !== undefined) {
-    throw new Error('edit_image accepts only one of source_attachment_id, source_attachment_ids, source_path, or source_paths')
+    throw new Error('edit_painting accepts only one of source_attachment_id, source_attachment_ids, source_path, or source_paths')
   }
 
   if (sourcePaths !== undefined) {
@@ -90,25 +90,25 @@ export async function resolveReferenceImages(input: {
   }
 
   if (input.agent === undefined) {
-    throw new Error('edit_image requires an active DSH agent session to resolve a reference image')
+    throw new Error('edit_painting requires an active DSH agent session to resolve a reference image')
   }
 
   const refs = findReferenceImages(input.agent.session.deriveMessages(), sourceAttachmentIds)
   if (refs.length === 0) {
     if (sourceAttachmentIds !== undefined) {
-      throw new Error(`edit_image could not find image attachment ${sourceAttachmentIds[0]} in the current conversation`)
+      throw new Error(`edit_painting could not find image attachment ${sourceAttachmentIds[0]} in the current conversation`)
     }
-    throw new Error('edit_image requires an image in the current conversation; upload or generate an image first')
+    throw new Error('edit_painting requires an image in the current conversation; upload or generate an image first')
   }
   if (sourceAttachmentIds !== undefined && refs.length !== sourceAttachmentIds.length) {
     const missing = sourceAttachmentIds.find(id => !refs.some(ref => attachmentIdsEqual(String(ref.attachmentId), id)))
-    throw new Error(`edit_image could not find image attachment ${missing ?? 'unknown'} in the current conversation`)
+    throw new Error(`edit_painting could not find image attachment ${missing ?? 'unknown'} in the current conversation`)
   }
 
   return Promise.all(refs.map(async ref => {
     const stored = await input.attachments.readImage(ref, input.signal)
     if (input.maxBytes !== undefined && stored.data.byteLength > input.maxBytes) {
-      throw new Error(`edit_image source image is too large (${stored.data.byteLength} bytes; maximum ${input.maxBytes})`)
+      throw new Error(`edit_painting source image is too large (${stored.data.byteLength} bytes; maximum ${input.maxBytes})`)
     }
     return { data: stored.data, mediaType: stored.ref.mediaType }
   }))
@@ -151,15 +151,15 @@ async function readWorkspaceReferenceImage(input: {
   signal: AbortSignal
 }): Promise<ResolvedReferenceImage> {
   const requested = input.sourcePath.trim()
-  if (requested.length === 0) throw new Error('edit_image source_path must not be empty')
+  if (requested.length === 0) throw new Error('edit_painting source_path must not be empty')
   if (input.workspaceRoot === undefined) {
-    throw new Error('edit_image source_path requires an active DSH session workspace')
+    throw new Error('edit_painting source_path requires an active DSH session workspace')
   }
 
   const root = resolve(input.workspaceRoot)
   const candidate = isAbsolute(requested) ? resolve(requested) : resolve(root, requested)
   if (!containsPath(root, candidate)) {
-    throw new Error('edit_image source_path must stay inside the session workspace: ' + requested)
+    throw new Error('edit_painting source_path must stay inside the session workspace: ' + requested)
   }
 
   let realRoot: string
@@ -168,24 +168,24 @@ async function readWorkspaceReferenceImage(input: {
     [realRoot, realCandidate] = await Promise.all([realpath(root), realpath(candidate)])
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error('edit_image could not find workspace image: ' + requested)
+      throw new Error('edit_painting could not find workspace image: ' + requested)
     }
     throw error
   }
   if (!containsPath(realRoot, realCandidate)) {
-    throw new Error('edit_image source_path resolves outside the session workspace: ' + requested)
+    throw new Error('edit_painting source_path resolves outside the session workspace: ' + requested)
   }
 
   const file = await stat(realCandidate)
-  if (!file.isFile()) throw new Error('edit_image source_path is not a file: ' + requested)
+  if (!file.isFile()) throw new Error('edit_painting source_path is not a file: ' + requested)
   if (input.maxBytes !== undefined && file.size > input.maxBytes) {
-    throw new Error('edit_image source image is too large (' + file.size + ' bytes; maximum ' + input.maxBytes + ')')
+    throw new Error('edit_painting source image is too large (' + file.size + ' bytes; maximum ' + input.maxBytes + ')')
   }
 
   const data = await readFile(realCandidate, { signal: input.signal })
   const mediaType = detectImageMediaType(data)
   if (mediaType === undefined) {
-    throw new Error('edit_image source_path is not a supported PNG, JPEG, WebP, or GIF image: ' + requested)
+    throw new Error('edit_painting source_path is not a supported PNG, JPEG, WebP, or GIF image: ' + requested)
   }
   return { data: new Uint8Array(data), mediaType }
 }
@@ -300,11 +300,11 @@ function mergeSelectors(input: {
   }
   if (input.multiple.length === 0) {
     if (input.single !== undefined) return [input.single]
-    throw new Error(`edit_image ${input.multipleName} must not be empty`)
+    throw new Error(`edit_painting ${input.multipleName} must not be empty`)
   }
   const single = input.single
   if (single !== undefined && !input.multiple.some(value => input.equal(single, value))) {
-    throw new Error(`edit_image ${input.singleName} must also appear in ${input.multipleName} when both are provided`)
+    throw new Error(`edit_painting ${input.singleName} must also appear in ${input.multipleName} when both are provided`)
   }
   return input.multiple
 }

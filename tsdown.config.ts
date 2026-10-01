@@ -11,7 +11,7 @@ const CLIENT_EXTERNALS = [
 ]
 
 const host: UserConfig = {
-  name: 'dsh-image-gen',
+  name: '@copylee/dsh-image-gen',
   entry: ['lib/types/index.js'],
   outDir: 'lib',
   format: ['esm'],
@@ -20,10 +20,13 @@ const host: UserConfig = {
   fixedExtension: false,
   dts: false,
   clean: false,
+  // DSH host libraries are inlined on purpose (the plugin must not depend on
+  // the exact rc the host ships); undici/socks stay external as dependencies.
+  deps: { onlyBundle: false },
 }
 
 const client: UserConfig = {
-  name: 'dsh-image-gen/client',
+  name: '@copylee/dsh-image-gen/client',
   entry: { client: 'lib/types/client/index.js' },
   outDir: 'lib',
   format: 'cjs',
@@ -32,8 +35,12 @@ const client: UserConfig = {
   dts: false,
   sourcemap: true,
   clean: false,
-  external: CLIENT_EXTERNALS,
-  noExternal: (id: string) => CLIENT_EXTERNALS.includes(id) ? undefined : true,
+  deps: {
+    neverBundle: CLIENT_EXTERNALS,
+    // Everything else (lucide-react, shared helpers) ships inside the bundle.
+    alwaysBundle: (id: string) => CLIENT_EXTERNALS.includes(id) ? undefined : true,
+    onlyBundle: false,
+  },
   // The host webview has no `process` global; bake NODE_ENV at build time.
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
@@ -43,7 +50,7 @@ const client: UserConfig = {
   },
   outputOptions: {
     entryFileNames: 'client.js',
-    banner: 'window.__ModuleLoader__.load({ id: "dsh-image-gen", factory: (require) => {',
+    banner: 'window.__ModuleLoader__.load({ id: "@copylee/dsh-image-gen", factory: (require) => {',
     footer: 'return module.exports; } });',
     intro: 'var module = { exports: {} }; var exports = module.exports;',
   },

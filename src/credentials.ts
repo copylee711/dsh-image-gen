@@ -1,14 +1,14 @@
 /**
  * Per-provider API keys.
  *
- * Keys live in DSH's credential store as records `dsh-image-gen/<providerId>`
+ * Keys live in DSH's credential store as records `copylee-image-gen/<providerId>`
  * (any number of user-added providers, no schema declaration needed). Hosts
  * without the record API fall back to a 0600 `keys.json` beside the settings.
  * Keys are only ever read on the Host; the browser sees configured/not.
  */
 import { join } from 'node:path'
 import { credentialKey, isCredentialKeySegment, type CredentialKey, type CredentialRecord } from '@deepseek-ai/dsh-credentials'
-import { PLUGIN_NAME } from './shared.js'
+import { PLUGIN_SLUG } from './shared.js'
 import { Mutex, readJson, writeJson } from './storage.js'
 
 export interface KeyStore {
@@ -32,7 +32,7 @@ export function hasRecordApi(value: unknown): value is CredentialRecordsService 
 
 function recordKey(providerId: string): CredentialKey {
   if (!isCredentialKeySegment(providerId)) throw new Error(`Provider id "${providerId}" cannot address a credential`)
-  return credentialKey(PLUGIN_NAME, providerId)
+  return credentialKey(PLUGIN_SLUG, providerId)
 }
 
 /** Keys in the DSH credential store. */

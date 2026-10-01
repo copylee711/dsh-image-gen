@@ -15,7 +15,7 @@ import { SettingsPanel } from './settings-view.js'
 import { useToast } from './widgets.js'
 
 type Tab = 'paint' | 'gallery' | 'prompts' | 'settings'
-const STATE_KEY = 'dsh-image-gen.page.v1'
+const STATE_KEY = 'copylee-image-gen.page.v1'
 const POLL_MS = 4000
 
 function loadState(): { tab?: Tab; project?: string; galleryFilter?: string } {

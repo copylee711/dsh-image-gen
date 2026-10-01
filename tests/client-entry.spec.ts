@@ -27,7 +27,7 @@ describe('client entry', () => {
     expect(seats).not.toContain('sidebar.right.pane.tab')
     expect(registrations.find(entry => entry.seat === 'sidebar.panellist')?.options.id).toBe(PANEL_ID)
     expect(registrations.find(entry => entry.seat === 'main')?.options.key).toBe(PANEL_ID)
-    expect(registrations.filter(entry => entry.seat === 'tool.call.toolview').map(entry => entry.options.key)).toEqual(['generate_image', 'generate_images', 'edit_image'])
+    expect(registrations.filter(entry => entry.seat === 'tool.call.toolview').map(entry => entry.options.key)).toEqual(['paint_image', 'paint_images', 'edit_painting'])
     expect(seats).toContain('settings.plugins.tab')
   })
 })
@@ -35,8 +35,8 @@ describe('client entry', () => {
 describe('imageResults', () => {
   const attachment = { attachmentId: 'sha256:1', mediaType: 'image/png', bytes: 1, width: 1, height: 1 }
   it('reads single and batch presentation meta', () => {
-    expect(imageResults({ kind: 'result', meta: { kind: 'dsh-image-gen', attachment, prompt: 'p', provider: 'modelscope', model: 'm', output: 'o' } })).toHaveLength(1)
-    expect(imageResults({ kind: 'result', resultView: { meta: { kind: 'dsh-image-gen-batch', images: [{ kind: 'dsh-image-gen', attachment }, { kind: 'dsh-image-gen', attachment }] } } })).toHaveLength(2)
+    expect(imageResults({ kind: 'result', meta: { kind: 'copylee-image-gen', attachment, prompt: 'p', provider: 'modelscope', model: 'm', output: 'o' } })).toHaveLength(1)
+    expect(imageResults({ kind: 'result', resultView: { meta: { kind: 'copylee-image-gen-batch', images: [{ kind: 'copylee-image-gen', attachment }, { kind: 'copylee-image-gen', attachment }] } } })).toHaveLength(2)
   })
   it('falls back to image content blocks', () => {
     expect(imageResults({ kind: 'result', content: [{ type: 'text', text: 'x' }, { type: 'image', attachment: attachment as never }] })).toHaveLength(1)

@@ -117,7 +117,7 @@ export function GalleryView(props: {
             <button type="button" className="dig-btn dig-btn-sm" disabled={selected.size === 0} onClick={() => { void api.gallery.update(ids, { favorite: true }).then(after) }}><Star size={13} />{t('favorite')}</button>
             <button type="button" className="dig-btn dig-btn-sm" disabled={selected.size === 0} onClick={openMove}><FolderInput size={13} />{t('moveTo')}</button>
             <button type="button" className="dig-btn dig-btn-sm" disabled={selected.size === 0} onClick={() => {
-              for (const item of items.filter(entry => selected.has(entry.id))) void downloadImage(item.attachment, `dsh-image-${item.id.slice(0, 8)}`)
+              for (const item of items.filter(entry => selected.has(entry.id))) void downloadImage(item.attachment, `copylee-image-${item.id.slice(0, 8)}`)
             }}><Download size={13} />{t('download')}</button>
             <button type="button" className="dig-btn dig-btn-sm dig-btn-danger" disabled={selected.size === 0} onClick={() => setConfirmDelete(ids)}><Trash2 size={13} />{t('delete')}</button>
             <button type="button" className="dig-icon-btn" aria-label={t('clearSelection')} onClick={() => { setSelecting(false); setSelected(new Set()) }}><X size={15} /></button>
@@ -187,7 +187,7 @@ export function GalleryView(props: {
       t={t}
       projectName={projectName}
       actions={{
-        onDownload: item => { void downloadImage(item.attachment, `dsh-image-${item.id.slice(0, 8)}`) },
+        onDownload: item => { void downloadImage(item.attachment, `copylee-image-${item.id.slice(0, 8)}`) },
         onCopy: item => { void copyImage(item.attachment).then(() => props.toast(t('copied')), (error: unknown) => props.onError(error instanceof Error ? error.message : String(error))) },
         onFavorite: item => { void api.gallery.update([item.id], { favorite: !item.favorite }).then(after) },
         onDelete: item => setConfirmDelete([item.id]),

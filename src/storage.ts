@@ -3,18 +3,18 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { PLUGIN_NAME } from './shared.js'
+import { PLUGIN_SLUG } from './shared.js'
 
 /**
  * Directory holding this plugin's settings and gallery. Precedence: explicit
- * config, `DSH_IMAGE_GEN_HOME`, `$DSH_HOME/storages/dsh-image-gen`, then
- * `~/.dsh/storages/dsh-image-gen` (next to DSH's own `workspace.json`).
+ * config, `COPYLEE_IMAGE_GEN_HOME`, `$DSH_HOME/storages/copylee-image-gen`, then
+ * `~/.dsh/storages/copylee-image-gen` (next to DSH's own `workspace.json`).
  */
 export function resolveDataDir(configured?: string): string {
-  const explicit = configured?.trim() || process.env.DSH_IMAGE_GEN_HOME?.trim()
+  const explicit = configured?.trim() || process.env.COPYLEE_IMAGE_GEN_HOME?.trim()
   if (explicit) return explicit
   const dshHome = process.env.DSH_HOME?.trim() || join(process.env.USERPROFILE || process.env.HOME || homedir(), '.dsh')
-  return join(dshHome, 'storages', PLUGIN_NAME)
+  return join(dshHome, 'storages', PLUGIN_SLUG)
 }
 
 /** Read and parse one JSON file; `undefined` when it does not exist. */

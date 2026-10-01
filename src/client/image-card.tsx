@@ -1,4 +1,4 @@
-/** Conversation card for generate_image / generate_images / edit_image results. */
+/** Conversation card for paint_image / paint_images / edit_painting results. */
 import { useState } from 'react'
 import { Copy, Download } from 'lucide-react'
 import type { AttachmentJson, GalleryItem } from '../gallery-types.js'
@@ -29,7 +29,7 @@ function isAttachment(value: unknown): value is AttachmentJson {
 function resultFromMeta(meta: unknown): ImageResult | undefined {
   if (typeof meta !== 'object' || meta === null) return undefined
   const value = meta as Record<string, unknown>
-  if (value.kind !== 'dsh-image-gen' || !isAttachment(value.attachment)) return undefined
+  if (value.kind !== 'copylee-image-gen' || !isAttachment(value.attachment)) return undefined
   return {
     attachment: value.attachment,
     prompt: typeof value.prompt === 'string' ? value.prompt : '',
@@ -43,7 +43,7 @@ function resultFromMeta(meta: unknown): ImageResult | undefined {
 export function imageResults(block: Block | undefined): ImageResult[] {
   if (block === undefined) return []
   const meta = block.meta ?? block.resultView?.meta
-  if (typeof meta === 'object' && meta !== null && (meta as { kind?: unknown }).kind === 'dsh-image-gen-batch') {
+  if (typeof meta === 'object' && meta !== null && (meta as { kind?: unknown }).kind === 'copylee-image-gen-batch') {
     const images = (meta as { images?: unknown }).images
     if (Array.isArray(images)) return images.map(resultFromMeta).filter((entry): entry is ImageResult => entry !== undefined)
   }
@@ -84,7 +84,7 @@ export function ImageToolCard(props: { block?: Block; locale?: LocaleService | u
         </div>
         <div className="dig-chat-meta">
           <span>{[item.providerId, item.model].filter(Boolean).join(' · ')}</span>
-          <button type="button" className="dig-icon-btn" title={t('download')} onClick={() => { void downloadImage(item.attachment, 'dsh-image') }}><Download size={14} /></button>
+          <button type="button" className="dig-icon-btn" title={t('download')} onClick={() => { void downloadImage(item.attachment, 'copylee-image') }}><Download size={14} /></button>
           <button type="button" className="dig-icon-btn" title={t('copy')} onClick={() => { void copyImage(item.attachment) }}><Copy size={14} /></button>
         </div>
       </div>)}
@@ -96,7 +96,7 @@ export function ImageToolCard(props: { block?: Block; locale?: LocaleService | u
       onClose={() => setOpen(null)}
       t={t}
       actions={{
-        onDownload: item => { void downloadImage(item.attachment, 'dsh-image') },
+        onDownload: item => { void downloadImage(item.attachment, 'copylee-image') },
         onCopy: item => { void copyImage(item.attachment) },
       }}
     />}

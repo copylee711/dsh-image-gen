@@ -145,7 +145,7 @@ describe('providerDigest', () => {
     const settings = defaultSettings()
     expect(providerDigest(settings, new Set())).toMatch(/no image provider has an API key/)
     const text = providerDigest(settings, new Set(['modelscope', 'zhipu']))
-    expect(text).toMatch(/generate_image/)
+    expect(text).toMatch(/paint_image/)
     expect(text).toMatch(/- modelscope \(default\): ModelScope 魔搭, model Qwen\/Qwen-Image, edit≤1/)
     expect(text).toMatch(/- zhipu: .*no-edit/)
     expect(text).not.toMatch(/- google/)

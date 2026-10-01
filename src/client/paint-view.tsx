@@ -11,7 +11,7 @@ import type { Translate } from './i18n.js'
 import { Lightbox } from './lightbox.js'
 import { RatioGlyph } from './widgets.js'
 
-const PARAMS_KEY = 'dsh-image-gen.paint.v1'
+const PARAMS_KEY = 'copylee-image-gen.paint.v1'
 const QUALITIES = ['auto', 'low', 'medium', 'high'] as const
 
 interface ParamState {
@@ -171,7 +171,7 @@ export function PaintView(props: {
   }
 
   const act = {
-    download: (item: GalleryItem) => { void downloadImage(item.attachment, `dsh-image-${item.id.slice(0, 8)}`).catch((failure: unknown) => props.onError(String(failure))) },
+    download: (item: GalleryItem) => { void downloadImage(item.attachment, `copylee-image-${item.id.slice(0, 8)}`).catch((failure: unknown) => props.onError(String(failure))) },
     copy: (item: GalleryItem) => { void copyImage(item.attachment).then(() => props.toast(t('copied')), (failure: unknown) => props.onError(failure instanceof Error ? failure.message : String(failure))) },
     favorite: (item: GalleryItem) => {
       void api.gallery.update([item.id], { favorite: !item.favorite }).then(() => {

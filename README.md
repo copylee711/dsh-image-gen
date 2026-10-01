@@ -1,7 +1,9 @@
-# 🎨 dsh-image-gen
+# 🎨 @copylee/dsh-image-gen
 
 DeepSeek Harness（DSH）的 AI 生图插件。DSH 左侧栏会多出一个「绘画」入口，打开的是全局画廊，与工作区无关，布局参考 Cherry Studio 的绘画页。Agent 在普通对话里也能在需要时直接调用生图工具。
 
+> 与原插件 `dsh-image-gen` 使用不同的包名、路由、数据目录和工具名，**两者可以同时安装**。
+>
 > 本插件参考并移植了 [shanliuling/dsh-image-gen](https://github.com/shanliuling/dsh-image-gen)（Apache-2.0）的部分 Provider 适配代码，详见 [NOTICE](NOTICE)。
 
 ## 功能
@@ -11,12 +13,12 @@ DeepSeek Harness（DSH）的 AI 生图插件。DSH 左侧栏会多出一个「�
 | 🎨 **侧边栏 · 绘画** | 左栏切换画廊项目、设置参数（服务商、模型、比例、清晰度、数量、种子、反向提示词、参考图），中间是画板和 Prompt 输入框，右栏显示当前项目的历史 |
 | 🖼️ **侧边栏 · 图库** | 浏览所有项目的图片，支持搜索、按服务商筛选、收藏、批量移动/下载/删除、导入本地图片，可在大图查看器里「作为参考图」或「复用 Prompt」 |
 | 🔖 **收藏 Prompt** | 收藏常用 Prompt，可一键带回绘画页 |
-| 💬 **对话** | Agent 需要时自动调用 `generate_image` / `generate_images` / `edit_image`，结果以图片卡片显示在对话里，同时存入画廊的「对话」项目 |
+| 💬 **对话** | Agent 需要时自动调用 `paint_image` / `paint_images` / `edit_painting`，结果以图片卡片显示在对话里，同时存入画廊的「对话」项目 |
 | ⚙️ **设置** | 预置服务商可直接改，也能添加任意多个自定义端点；全局代理加上每个服务商单独的代理；可测试连接、拉取模型列表 |
 
 ### 画廊不绑定项目
 
-- 画廊数据存放在 `~/.dsh/storages/dsh-image-gen/gallery.json`，图片本体存在 DSH 附件库里，不跟任何工作区或会话挂钩，切换工作区后画廊内容不会变。
+- 画廊数据存放在 `~/.dsh/storages/copylee-image-gen/gallery.json`，图片本体存在 DSH 附件库里，不跟任何工作区或会话挂钩，切换工作区后画廊内容不会变。
 - 画廊有**自己的项目分组**，可以新建、重命名、删除（删除时可选择把图片一起删掉或移到「默认画板」）。另有两个内置项目：「默认画板」和「对话」（Agent 在对话中生成的图会放在这里）。
 - 如果需要，也可以把对话里生成的图再存一份到当前会话工作区（设置 → 存储）。
 
@@ -25,7 +27,7 @@ DeepSeek Harness（DSH）的 AI 生图插件。DSH 左侧栏会多出一个「�
 在 DeepSeek Harness 项目根目录执行：
 
 ```bash
-pnpm dsh plugin --profile web add dsh-image-gen@latest
+pnpm dsh plugin --profile web add @copylee/dsh-image-gen@latest
 # 或者从 GitHub 直接安装
 pnpm dsh plugin --profile web add git+https://github.com/copylee711/dsh-image-gen.git
 ```
@@ -65,16 +67,16 @@ pnpm dsh plugin --profile web add git+https://github.com/copylee711/dsh-image-ge
 
 | 工具 | 说明 |
 | :--- | :--- |
-| `generate_image` | 文生图。Agent 判断需要配图时会主动调用 |
-| `generate_images` | 一次按顺序生成多张，最多 8 张 |
-| `edit_image` | 图生图/改图。用户刚上传的图会直接作为输入，也支持传对话里的附件 ID 或工作区里的文件路径 |
+| `paint_image` | 文生图。Agent 判断需要配图时会主动调用 |
+| `paint_images` | 一次按顺序生成多张，最多 8 张 |
+| `edit_painting` | 图生图/改图。用户刚上传的图会直接作为输入，也支持传对话里的附件 ID 或工作区里的文件路径 |
 
 每次请求时，插件会往系统上下文里注入一小段说明，列出已配置 Key 的服务商（id、模型、是否支持编辑），这样 Agent 就知道可以生图、也能按用户要求指定服务商。
 
 ## 数据与隐私
 
-- API Key 存在 DSH 凭据库里（记录名为 `dsh-image-gen/<服务商 id>`），浏览器端永远拿不到明文。宿主不支持记录 API 时，会退回到权限为 0600 的 `keys.json`。
-- 设置保存在 `~/.dsh/storages/dsh-image-gen/settings.json`，画廊保存在 `gallery.json`。可以用 `DSH_IMAGE_GEN_HOME` 或插件配置项 `dataDir` 换目录。
+- API Key 存在 DSH 凭据库里（记录名为 `copylee-image-gen/<服务商 id>`），浏览器端永远拿不到明文。宿主不支持记录 API 时，会退回到权限为 0600 的 `keys.json`。
+- 设置保存在 `~/.dsh/storages/copylee-image-gen/settings.json`，画廊保存在 `gallery.json`。可以用 `COPYLEE_IMAGE_GEN_HOME` 或插件配置项 `dataDir` 换目录。
 - Prompt 和参考图会发送给你选择的服务商。
 
 ## 开发
@@ -85,6 +87,9 @@ pnpm typecheck
 pnpm test        # vitest，包含本地 HTTP / SOCKS5 代理的端到端测试
 pnpm build       # 输出 lib/index.js（Host）和 lib/client.js（浏览器）
 pnpm pack:check
+
+# 发布（scoped 包，publishConfig 已设为 public）
+npm publish --access public
 ```
 
 ## 路线图

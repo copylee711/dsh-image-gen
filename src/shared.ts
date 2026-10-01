@@ -5,10 +5,16 @@
  * file in for route paths, protocol capabilities and the provider presets.
  */
 
-/** Plugin name; also the credential record scope and the storage folder name. */
-export const PLUGIN_NAME = 'dsh-image-gen'
+/** npm package name; DSH's module loader and plugin loader key the plugin by it. */
+export const PACKAGE_NAME = '@copylee/dsh-image-gen'
+/**
+ * Internal slug: route prefix, credential record scope, storage folder and
+ * browser storage prefix. Distinct from shanliuling/dsh-image-gen's
+ * `dsh-image-gen` so both plugins can be installed side by side.
+ */
+export const PLUGIN_SLUG = 'copylee-image-gen'
 
-const ROUTE_BASE = '/plugins/dsh-image-gen'
+const ROUTE_BASE = `/plugins/${PLUGIN_SLUG}`
 /** Serve one durable attachment image to the browser. */
 export const IMAGE_ROUTE = `${ROUTE_BASE}/image`
 /** Turn browser-picked files into durable attachments. */
@@ -218,7 +224,7 @@ export function defaultSettings(): PluginSettings {
     activeProvider: 'modelscope',
     proxy: { enabled: false, url: '', noProxy: ['localhost', '127.0.0.1', '::1'] },
     saveToWorkspace: true,
-    workspaceFolder: 'dsh-image-gen',
+    workspaceFolder: PLUGIN_SLUG,
   }
 }
 

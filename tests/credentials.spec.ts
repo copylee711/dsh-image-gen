@@ -18,12 +18,12 @@ function memoryRecords(fail = false): CredentialRecordsService & { records: Map<
 }
 
 describe('key stores', () => {
-  it('stores keys as dsh-image-gen/<provider> credential records', async () => {
+  it('stores keys as copylee-image-gen/<provider> credential records', async () => {
     const service = memoryRecords()
     expect(hasRecordApi(service)).toBe(true)
     const store = credentialKeyStore(service)
     await store.set('custom-1', '  sk-abc  ')
-    expect(service.records.get('dsh-image-gen/custom-1')).toEqual({ kind: 'api-key', key: 'sk-abc' })
+    expect(service.records.get('copylee-image-gen/custom-1')).toEqual({ kind: 'api-key', key: 'sk-abc' })
     expect(await store.get('custom-1')).toBe('sk-abc')
     await store.unset('custom-1')
     expect(await store.get('custom-1')).toBeUndefined()

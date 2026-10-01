@@ -1,5 +1,5 @@
 /**
- * dsh-image-gen Host bundle: Agent image tools, the paintings/gallery/settings
+ * @copylee/dsh-image-gen Host bundle: Agent image tools, the paintings/gallery/settings
  * routes, and the conversation context line telling the model it can draw.
  */
 import type { Context } from '@deepseek-ai/cordis'
@@ -24,7 +24,8 @@ import {
   KEY_ROUTE,
   MODELS_ROUTE,
   PAINT_ROUTE,
-  PLUGIN_NAME,
+  PACKAGE_NAME,
+  PLUGIN_SLUG,
   SETTINGS_ROUTE,
   TEST_ROUTE,
   capabilitiesOf,
@@ -34,7 +35,7 @@ import {
 import { resolveDataDir } from './storage.js'
 import { saveImageToWorkspace } from './workspace-save.js'
 
-export const name = PLUGIN_NAME
+export const name = PACKAGE_NAME
 export const inject = ['tools', 'attachments', 'credentials', 'webServer']
 
 export interface Config {
@@ -43,7 +44,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  dataDir: z.string().description('设置与画廊数据目录；留空使用 ~/.dsh/storages/dsh-image-gen'),
+  dataDir: z.string().description('设置与画廊数据目录；留空使用 ~/.dsh/storages/copylee-image-gen'),
 }) as z<Config>
 
 interface GeneratedValue {
@@ -86,10 +87,10 @@ export function providerDigest(settings: PluginSettings, keyed: ReadonlySet<stri
       return `- ${entry.id}${entry.id === settings.activeProvider ? ' (default)' : ''}: ${entry.name}, model ${model || '?'}, ${edit}`
     })
   if (rows.length === 0) {
-    return 'Image generation tools (generate_image, edit_image) are installed but no image provider has an API key yet; if the user asks for an image, tell them to configure one in Settings > Plugins > 图像生成.'
+    return 'Image generation tools (paint_image, edit_painting) are installed but no image provider has an API key yet; if the user asks for an image, tell them to configure one in Settings > Plugins > 图像生成.'
   }
   return [
-    'You can create images with generate_image / generate_images and modify images with edit_image whenever a picture would genuinely help the user (they ask for an image, illustration, poster, logo, diagram-like visual, or edits to an attached image). Do not generate images unprompted for plain text questions.',
+    'You can create images with paint_image / paint_images and modify images with edit_painting whenever a picture would genuinely help the user (they ask for an image, illustration, poster, logo, diagram-like visual, or edits to an attached image). Do not generate images unprompted for plain text questions.',
     'Configured image providers (pass the id as `provider` only when the user asks for a specific one):',
     ...rows,
   ].join('\n')
@@ -107,7 +108,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   const services: PluginServices = { settings, keys, gallery, attachments: ctx.attachments }
 
   const route = (kind: 'exact' | 'prefix', path: string, handler: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<void>): void => {
-    ctx.effect(() => ctx.webServer.register({ kind, path, handler }), `${PLUGIN_NAME}: ${path}`)
+    ctx.effect(() => ctx.webServer.register({ kind, path, handler }), `${PLUGIN_SLUG}: ${path}`)
   }
   route('exact', IMAGE_ROUTE, imageRoute(services))
   route('exact', IMPORT_ROUTE, (req, res) => serveImport(req, res, {
@@ -134,10 +135,10 @@ export function apply(ctx: Context, config: Config = {}): void {
     digest = providerDigest(current, keyed)
   }
   void refreshDigest().catch(() => {})
-  ctx.effect(() => settings.onChange(() => { void refreshDigest().catch(() => {}) }), `${PLUGIN_NAME}: digest refresh`)
+  ctx.effect(() => settings.onChange(() => { void refreshDigest().catch(() => {}) }), `${PLUGIN_SLUG}: digest refresh`)
   ctx.on('credentials/record-updated' as never, (() => { void refreshDigest().catch(() => {}) }) as never)
   ctx.inject(['systemPrompt'], (promptCtx: Context) => {
-    promptCtx.systemPrompt.context({ name: `${PLUGIN_NAME}:providers`, order: 60, text: () => digest })
+    promptCtx.systemPrompt.context({ name: `${PLUGIN_SLUG}:providers`, order: 60, text: () => digest })
   })
 
   /** Generate one image for a tool call and mirror it into the gallery. */
@@ -177,7 +178,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       ...(value.savedTo === undefined ? {} : { savedTo: value.savedTo }),
       ...(sourceIds.length > 0 ? { sourceAttachmentIds: sourceIds } : {}),
     }]).catch((error: unknown) => {
-      ctx.logger.warn(`${PLUGIN_NAME}: failed to record gallery item: ${error instanceof Error ? error.message : String(error)}`)
+      ctx.logger.warn(`${PLUGIN_SLUG}: failed to record gallery item: ${error instanceof Error ? error.message : String(error)}`)
     })
     return value
   }
@@ -191,8 +192,8 @@ export function apply(ctx: Context, config: Config = {}): void {
   } as const
 
   ctx.tools.register(defineTool({
-    name: 'generate_image',
-    description: 'Create a new image from a text prompt with the configured image provider. Call it on your own whenever the user wants a picture — an illustration, photo, poster, logo, icon, wallpaper, concept art, or a visual to accompany your answer — not only when they say "generate". Use edit_image instead to change an existing image. Write a complete visual prompt: subject, composition, style, lighting, colors, and any exact text to render. The image is attached to the conversation and saved to the gallery; do not search for it afterwards.',
+    name: 'paint_image',
+    description: 'Create a new image from a text prompt with the configured image provider. Call it on your own whenever the user wants a picture — an illustration, photo, poster, logo, icon, wallpaper, concept art, or a visual to accompany your answer — not only when they say "generate". Use edit_painting instead to change an existing image. Write a complete visual prompt: subject, composition, style, lighting, colors, and any exact text to render. The image is attached to the conversation and saved to the gallery; do not search for it afterwards.',
     parameters: {
       prompt: { type: 'string', required: true, description: 'Complete description of the image.' },
       provider: providerParam,
@@ -207,8 +208,8 @@ export function apply(ctx: Context, config: Config = {}): void {
   }))
 
   ctx.tools.register(defineTool({
-    name: 'generate_images',
-    description: 'Generate several images in one call, one per prompt, in order (variations, a set of illustrations, storyboards). Prefer generate_image for a single image. A failed item is reported and does not stop the rest.',
+    name: 'paint_images',
+    description: 'Generate several images in one call, one per prompt, in order (variations, a set of illustrations, storyboards). Prefer paint_image for a single image. A failed item is reported and does not stop the rest.',
     parameters: {
       prompts: { type: 'array', items: { type: 'string' }, required: true, description: 'Ordered complete prompts, 1–8.' },
       provider: providerParam,
@@ -218,8 +219,8 @@ export function apply(ctx: Context, config: Config = {}): void {
     output: batchOutput(),
     async execute(args, exec): Promise<BatchGeneratedValue> {
       const input = args as Omit<ImageArgs, 'prompt'> & { prompts: string[] }
-      if (input.prompts.length === 0) throw new Error('generate_images requires at least one prompt')
-      if (input.prompts.length > 8) throw new Error('generate_images accepts at most 8 prompts per call; split larger batches')
+      if (input.prompts.length === 0) throw new Error('paint_images requires at least one prompt')
+      if (input.prompts.length > 8) throw new Error('paint_images accepts at most 8 prompts per call; split larger batches')
       const images: BatchGeneratedValue['images'] = []
       const failures: BatchGeneratedValue['failures'] = []
       for (const [index, prompt] of input.prompts.entries()) {
@@ -240,8 +241,8 @@ export function apply(ctx: Context, config: Config = {}): void {
   }))
 
   ctx.tools.register(defineTool({
-    name: 'edit_image',
-    description: 'Edit, combine or restyle existing images with the configured provider. Images attached to the latest user message are already available: call edit_image right away with just a prompt — never search the disk or invent paths for them. For an older image in this conversation pass source_attachment_id(s); for a workspace file the user names pass source_path(s). Provide at most one selector. When the user wants a person/object kept identical, say so explicitly in the prompt (keep the same subject, change only …).',
+    name: 'edit_painting',
+    description: 'Edit, combine or restyle existing images with the configured provider. Images attached to the latest user message are already available: call edit_painting right away with just a prompt — never search the disk or invent paths for them. For an older image in this conversation pass source_attachment_id(s); for a workspace file the user names pass source_path(s). Provide at most one selector. When the user wants a person/object kept identical, say so explicitly in the prompt (keep the same subject, change only …).',
     parameters: {
       prompt: { type: 'string', required: true, description: 'What to change, and what must stay the same.' },
       provider: providerParam,
@@ -266,7 +267,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         maxBytes: ctx.attachments.imageLimits.maxImageBytes,
         signal: run.signal,
       })
-      if (sources.length === 0) throw new Error('edit_image found no reference image; attach one or pass source_attachment_id')
+      if (sources.length === 0) throw new Error('edit_painting found no reference image; attach one or pass source_attachment_id')
       const ids = [input.source_attachment_id, ...(input.source_attachment_ids ?? [])].filter((id): id is string => typeof id === 'string')
       return generateForTool(input, run, sources, ids)
     },
@@ -299,7 +300,7 @@ function imageOutput(verb: 'Generated' | 'Edited') {
       ]
     },
     presentationMeta: (args: unknown, value: GeneratedValue) => ({
-      kind: 'dsh-image-gen',
+      kind: 'copylee-image-gen',
       attachment: toAttachmentJson(value.attachment),
       provider: value.provider,
       model: value.model,
@@ -334,7 +335,7 @@ function batchOutput() {
         block.type === 'text' ? { ...block, text: `${block.text}\nImage prompt: ${image.prompt}` } : block)),
     ],
     presentationMeta: (_args: unknown, value: BatchGeneratedValue) => ({
-      kind: 'dsh-image-gen-batch',
+      kind: 'copylee-image-gen-batch',
       images: value.images.map(image => single.presentationMeta({ prompt: image.prompt }, image)),
     }),
   } as const
@@ -344,12 +345,12 @@ function batchOutput() {
 export function imageAttachmentFromMeta(meta: unknown): ImageAttachmentRef | undefined {
   if (typeof meta !== 'object' || meta === null) return undefined
   const value = meta as { kind?: unknown; attachment?: unknown }
-  return value.kind === 'dsh-image-gen' ? parseImageAttachmentRef(value.attachment) : undefined
+  return value.kind === 'copylee-image-gen' ? parseImageAttachmentRef(value.attachment) : undefined
 }
 
 function imagePresentation(result: ToolResult) {
   const meta = result.meta as { kind?: unknown; images?: unknown } | undefined
-  if (meta !== undefined && meta !== null && meta.kind === 'dsh-image-gen-batch' && Array.isArray(meta.images)) {
+  if (meta !== undefined && meta !== null && meta.kind === 'copylee-image-gen-batch' && Array.isArray(meta.images)) {
     const content = meta.images.flatMap(image => {
       const attachment = imageAttachmentFromMeta(image)
       return attachment === undefined ? [] : [{ type: 'image' as const, attachment }]

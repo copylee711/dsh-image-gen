@@ -1,5 +1,5 @@
 /**
- * dsh-image-gen browser bundle.
+ * @copylee/dsh-image-gen browser bundle.
  *
  * - Left sidebar entry “绘画” (`sidebar.panellist`) opening a global page in
  *   the `main` seat — the same mechanism DSH's own 自动化任务 uses, so the
@@ -10,7 +10,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { Palette } from 'lucide-react'
-import { PLUGIN_NAME } from '../shared.js'
+import { PLUGIN_SLUG } from '../shared.js'
 import { ImageToolCard } from './image-card.js'
 import { langOf, translator, useT, type LocaleService } from './i18n.js'
 import { PaintingsPage } from './paintings-page.js'
@@ -21,7 +21,7 @@ export { PaintingsPage } from './paintings-page.js'
 export { SettingsPanel } from './settings-view.js'
 
 /** Panel id shared by the sidebar entry and its `main` page. */
-export const PANEL_ID = 'dsh-image-gen.paintings'
+export const PANEL_ID = 'copylee-image-gen.paintings'
 
 export const inject = ['slots', 'locale']
 
@@ -43,11 +43,11 @@ export function apply(ctx: Context): void {
 
   ctx.effect(() => {
     const style = document.createElement('style')
-    style.dataset.plugin = PLUGIN_NAME
+    style.dataset.plugin = PLUGIN_SLUG
     style.textContent = STYLE
     document.head.appendChild(style)
     return () => style.remove()
-  }, `${PLUGIN_NAME}: styles`)
+  }, `${PLUGIN_SLUG}: styles`)
 
   const slots = (ctx as unknown as { slots: { register: Register; inject: InjectSeat } }).slots
   const register: Register = slots.register.bind(slots)
@@ -69,19 +69,19 @@ export function apply(ctx: Context): void {
   // 2. Settings page (current seat + legacy seat).
   seat('settings.plugins.tab', () => register({
     name: 'settings.plugins.tab',
-    id: PLUGIN_NAME,
+    id: PLUGIN_SLUG,
     order: 30,
     label: () => (langOf(locale) === 'zh' ? '图像生成' : 'Image generation'),
     inject: () => ({ locale }),
   }, SettingsCard))
   seat('settings.plugin.item', () => register({
     name: 'settings.plugin.item',
-    key: PLUGIN_NAME,
+    key: PLUGIN_SLUG,
     inject: () => ({ locale }),
   }, SettingsCard))
 
   // 3. Conversation cards for the Agent tools.
-  for (const tool of ['generate_image', 'generate_images', 'edit_image']) {
+  for (const tool of ['paint_image', 'paint_images', 'edit_painting']) {
     seat('tool.call.toolview', () => register({
       name: 'tool.call.toolview',
       key: tool,
