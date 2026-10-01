@@ -39,6 +39,19 @@ function resultFromMeta(meta: unknown): ImageResult | undefined {
   }
 }
 
+/** Background jobs a result started (`background: true`); their images show in the reply. */
+export function pendingJobs(block: Block | undefined): string[] {
+  const meta = block?.meta ?? block?.resultView?.meta
+  if (typeof meta !== 'object' || meta === null) return []
+  const entries = (meta as { kind?: unknown }).kind === 'copylee-image-gen-batch' ? (meta as { images?: unknown }).images : [meta]
+  return Array.isArray(entries)
+    ? entries.flatMap(entry => {
+      const value = entry as { kind?: unknown; pending?: unknown; jobId?: unknown }
+      return value.kind === 'copylee-image-gen' && value.pending === true && typeof value.jobId === 'string' ? [value.jobId] : []
+    })
+    : []
+}
+
 /** Every image a tool-call block carries, from meta first, then content. */
 export function imageResults(block: Block | undefined): ImageResult[] {
   if (block === undefined) return []
@@ -55,12 +68,16 @@ export function imageResults(block: Block | undefined): ImageResult[] {
     : [])
 }
 
-export function ImageToolCard(props: { block?: Block; locale?: LocaleService | undefined }) {
+export function ImageToolCard(props: { block?: Block; phase?: 'preparing' | 'start' | 'result'; locale?: LocaleService | undefined }) {
   const t = useT(props.locale)
   const results = imageResults(props.block)
+  const pending = pendingJobs(props.block)
   const [open, setOpen] = useState<number | null>(null)
+  if (results.length === 0 && pending.length > 0) {
+    return <div className="dig-root" style={{ background: 'transparent' }}><div className="dig-hint">{t('backgroundJobs').replace('{count}', String(pending.length))}</div></div>
+  }
   if (results.length === 0) {
-    const running = props.block === undefined || !('kind' in props.block)
+    const running = props.phase !== undefined ? props.phase !== 'result' : props.block === undefined || !('kind' in props.block)
     if (running) return <div className="dig-root" style={{ background: 'transparent' }}><div className="dig-skeleton" style={{ width: 240, height: 180 }} /></div>
     const text = (props.block?.content ?? props.block?.resultView?.content ?? []).filter(item => item.type === 'text').map(item => item.text).join('\n')
     return <div className="dig-root" style={{ background: 'transparent' }}>{text.length > 0 ? <div className="dig-error" style={{ margin: 0 }}>{text}</div> : null}</div>

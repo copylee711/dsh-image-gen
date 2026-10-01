@@ -53,6 +53,7 @@ export function normalizeSettings(raw: unknown): PluginSettings {
         ? proxyRaw.noProxy.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(item => item.length > 0)
         : base.proxy.noProxy,
     },
+    chatTools: typeof input.chatTools === 'boolean' ? input.chatTools : base.chatTools,
     saveToWorkspace: typeof input.saveToWorkspace === 'boolean' ? input.saveToWorkspace : base.saveToWorkspace,
     workspaceFolder: typeof input.workspaceFolder === 'string' ? input.workspaceFolder.trim() : base.workspaceFolder,
     imageDir: typeof input.imageDir === 'string' ? input.imageDir.trim() : base.imageDir,

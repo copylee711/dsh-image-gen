@@ -220,6 +220,15 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
             <span className="dig-hint">{t('noProxyHint')}</span>
           </div>
           <div className="dig-divider" />
+          <h2>{t('conversation')}</h2>
+          <div className="dig-field">
+            <div className="dig-row">
+              <Switch checked={draft.chatTools} label={t('chatTools')} onChange={chatTools => setDraft({ ...draft, chatTools })} />
+              <span style={{ fontSize: 13 }}>{t('chatTools')}</span>
+            </div>
+            <span className="dig-hint">{t('chatToolsHint')}</span>
+          </div>
+          <div className="dig-divider" />
           <h2>{t('storage')}</h2>
           <div className="dig-row">
             <Switch checked={draft.saveToWorkspace} label={t('saveToWorkspace')} onChange={saveToWorkspace => setDraft({ ...draft, saveToWorkspace })} />

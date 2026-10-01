@@ -73,6 +73,19 @@ pnpm dsh plugin --profile web add git+https://github.com/copylee711/dsh-image-ge
 
 每次请求时，插件会往系统上下文里注入一小段说明，列出已配置 Key 的服务商（id、模型、是否支持编辑），这样 Agent 就知道可以生图、也能按用户要求指定服务商。
 
+### 后台生图与正文内联显示
+
+- 三个工具都有 `background` 参数，由 Agent 自行决定是否阻塞：
+  - **阻塞（默认）**：等图片生成完再继续，适合"图片就是要交付的东西"的场景（海报、Logo）。
+  - **后台（`background: true`）**：立即返回，Agent 继续输出文字，适合讲解里的配图、示意图。回复可以比图片先结束。
+- 每次生图都会分配一个任务 ID，工具结果里带有 `genimg:<任务 ID>` 引用。配合 [@copylee/dsh-better-display](https://github.com/copylee711/dsh-better-display)，模型把它写成 `![说明](genimg:<任务 ID>)`，图片就会以原始宽高比显示在回复正文里。后台任务未完成时显示同比例的"生成中"占位，完成后自动换成图片。
+- 后台任务失败时，插件会通知 Agent：Agent 空闲时唤醒它说明原因或重试，正忙时并入它的下一步。成功只静默记录，不会额外打开新一轮对话。
+- 任务状态接口：`GET /plugins/copylee-image-gen/jobs/<id>`（JSON），`GET /plugins/copylee-image-gen/jobs/<id>/image`（图片）。已完成的任务记在画廊里，重启后仍可显示。
+
+### 关闭对话生图
+
+设置 > 插件 > 图像生成 > 对话 >「允许 Agent 在对话中生图」。关闭后对话里不再提供 `paint_image` / `paint_images` / `edit_painting`，也不再注入服务商说明；绘画页不受影响，切换即时生效。
+
 ## 分辨率、收藏 Prompt 与本地文件
 
 - **分辨率**：ModelScope、硅基流动、OpenAI 系、DashScope、智谱、Seedream 可以在「标准 / 1K / 1.5K / 2K / 自定义宽×高」之间选择。自定义尺寸会按各服务商允许的范围和步长自动对齐；Gemini、xAI 仍然用清晰度档位。

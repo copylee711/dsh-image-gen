@@ -182,6 +182,10 @@ export class GalleryDb {
     return (await this.load()).items.find(item => item.id === id)
   }
 
+  async findByJobId(jobId: string): Promise<GalleryItem | undefined> {
+    return (await this.load()).items.find(item => item.jobId === jobId)
+  }
+
   /** Whether any item still points at this file. */
   async fileInUse(path: string): Promise<boolean> {
     return (await this.load()).items.some(item => item.filePath === path)

@@ -6,12 +6,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import z from '@deepseek-ai/schemastery'
+import { createUserMessage, type ContextFormed, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool, type ToolResult } from '@deepseek-ai/dsh-tools'
 import type {} from './system-prompt-service.js'
 import { credentialKeyStore, fileKeyStore, hasRecordApi, layeredKeyStore } from './credentials.js'
 import { GalleryDb } from './gallery-db.js'
 import { CONVERSATION_PROJECT_ID } from './gallery-types.js'
 import { serveImport } from './import-route.js'
+import { GENIMG_SCHEME, JobRegistry, expectedRatio, jobsRoute } from './jobs.js'
 import { parseImageAttachmentRef, resolveReferenceImages } from './reference-image.js'
 import { galleryRoute, imageRoute, proxyStatusRoute, keyRoute, modelsRoute, paintRoute, settingsRoute, testRoute } from './routes.js'
 import { generateAndStore, saveImageCopy, toAttachmentJson, type PluginServices } from './services.js'
@@ -21,6 +23,7 @@ import {
   GALLERY_ROUTE,
   IMAGE_ROUTE,
   IMPORT_ROUTE,
+  JOBS_ROUTE,
   KEY_ROUTE,
   MODELS_ROUTE,
   PAINT_ROUTE,
@@ -36,6 +39,13 @@ import {
 import { resolveDataDir } from './storage.js'
 import { saveImageToWorkspace } from './workspace-save.js'
 
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** Background image job notices (finished / failed after the call returned). */
+    'copylee-image-gen': { kind: 'copylee-image-gen' } & ContextFormed
+  }
+}
+
 export const name = PACKAGE_NAME
 export const inject = ['tools', 'attachments', 'credentials', 'webServer']
 
@@ -49,6 +59,8 @@ export const Config: z<Config> = z.object({
 }) as z<Config>
 
 interface GeneratedValue {
+  /** Job id; the reply embeds the image as `genimg:<jobId>`. */
+  jobId: string
   attachment: ImageAttachmentRef
   provider: string
   model: string
@@ -57,14 +69,60 @@ interface GeneratedValue {
   saveError?: string
 }
 
+/** A `background: true` call: the image is still being generated. */
+interface PendingValue {
+  jobId: string
+  pending: true
+}
+
+type ImageValue = GeneratedValue | PendingValue
+
+function isPending(value: ImageValue): value is PendingValue {
+  return 'pending' in value
+}
+
+type SourceImages = Array<{ data: Uint8Array; mediaType: ImageAttachmentRef['mediaType'] }>
+
 interface BatchGeneratedValue {
-  images: (GeneratedValue & { prompt: string })[]
+  images: (ImageValue & { prompt: string })[]
   failures: { index: number; prompt: string; error: string }[]
 }
 
 interface ExecLike {
-  agent?: { session: { header: { id?: unknown; cwd?: string }; deriveMessages(): readonly unknown[] } } | undefined
+  agent?: {
+    session: { header: { id?: unknown; cwd?: string }; deriveMessages(): readonly unknown[] }
+    status?: 'idle' | 'running'
+    followup?(message: UserMessage): void
+    inject?(message: UserMessage): void
+  } | undefined
   signal: AbortSignal
+}
+
+/**
+ * Tell the calling Agent how a background job ended, as a collapsed notice row.
+ * A failure wakes an idle Agent so it can retry or explain; a success is only
+ * queued as context for its next step (the image already shows in the reply).
+ */
+export function notifyBackgroundJob(exec: ExecLike, outcome: { jobId: string; prompt: string; error?: string }): void {
+  const agent = exec.agent
+  if (agent === undefined) return
+  const failed = outcome.error !== undefined
+  const subject = outcome.prompt.length > 60 ? `${outcome.prompt.slice(0, 57)}...` : outcome.prompt
+  const message = createUserMessage({
+    content: [{
+      type: 'text',
+      text: failed
+        ? `Background image job ${outcome.jobId} failed: ${String(outcome.error)}\nImage prompt: ${outcome.prompt}\nIts placeholder in your earlier reply now shows the failure. Tell the user briefly, and retry with paint_image (background: true) if a fix is obvious (another provider, a simpler prompt); otherwise explain what they can change.`
+        : `Background image job ${outcome.jobId} finished; genimg:${outcome.jobId} now shows the image in your reply. No action needed.`,
+    }],
+    source: { kind: 'copylee-image-gen', form: 'notice', summary: `${failed ? 'Image generation failed' : 'Image generated'}: ${subject}`.slice(0, 120) },
+  })
+  try {
+    if (failed && agent.status === 'idle' && agent.followup !== undefined) agent.followup(message)
+    else agent.inject?.(message)
+  } catch {
+    // The Agent was disposed (conversation closed); the placeholder still shows the outcome.
+  }
 }
 
 interface ImageArgs {
@@ -75,10 +133,12 @@ interface ImageArgs {
   image_size?: string | undefined
   size?: string | undefined
   negative_prompt?: string | undefined
+  background?: boolean | undefined
 }
 
 /** One line per enabled provider for the model's context and errors. */
 export function providerDigest(settings: PluginSettings, keyed: ReadonlySet<string>): string {
+  if (!settings.chatTools) return ''
   const rows = settings.providers
     .filter(entry => entry.enabled && entry.baseURL.length > 0 && keyed.has(entry.id))
     .map(entry => {
@@ -95,6 +155,7 @@ export function providerDigest(settings: PluginSettings, keyed: ReadonlySet<stri
   }
   return [
     'You can create images with paint_image / paint_images and modify images with edit_painting whenever a picture would genuinely help the user (they ask for an image, illustration, poster, logo, diagram-like visual, or edits to an attached image). Do not generate images unprompted for plain text questions.',
+    'Pass `background: true` for an illustration that accompanies an explanation (a diagram for a lesson, a picture beside the text): the tool returns at once and you keep writing while the image renders. Keep the default blocking call when the image itself is the deliverable or your next words depend on it.',
     'Configured image providers (pass the id as `provider` only when the user asks for a specific one):',
     ...rows,
   ].join('\n')
@@ -110,6 +171,8 @@ export function apply(ctx: Context, config: Config = {}): void {
   )
   const gallery = new GalleryDb(dataDir)
   const services: PluginServices = { settings, keys, gallery, attachments: ctx.attachments, dataDir }
+  const jobs = new JobRegistry(gallery)
+  ctx.effect(() => () => jobs.dispose(), `${PLUGIN_SLUG}: image jobs`)
 
   const route = (kind: 'exact' | 'prefix', path: string, handler: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<void>): void => {
     // Never let a throw reach the host server: it answers a bare, body-less 400.
@@ -140,6 +203,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   route('exact', PAINT_ROUTE, paintRoute(services))
   route('exact', GALLERY_ROUTE, galleryRoute(services))
   route('exact', PROXY_STATUS_ROUTE, proxyStatusRoute())
+  route('prefix', JOBS_ROUTE, jobsRoute(services, jobs, JOBS_ROUTE))
 
   // Context line: which providers the model may name. Cached and refreshed on
   // settings/key changes so prompt assembly never waits on disk.
@@ -159,8 +223,8 @@ export function apply(ctx: Context, config: Config = {}): void {
     promptCtx.systemPrompt.context({ name: `${PLUGIN_SLUG}:providers`, order: 60, text: () => digest })
   })
 
-  /** Generate one image for a tool call and mirror it into the gallery. */
-  const generateForTool = async (args: ImageArgs, exec: ExecLike, sourceImages: Array<{ data: Uint8Array; mediaType: ImageAttachmentRef['mediaType'] }>, sourceIds: string[]): Promise<GeneratedValue> => {
+  /** Generate one image under a job and mirror it into the gallery. */
+  const generateImage = async (jobId: string, args: ImageArgs, exec: ExecLike, sourceImages: SourceImages, sourceIds: string[], signal: AbortSignal): Promise<GeneratedValue> => {
     const { entry, result, attachment } = await generateAndStore(services, args.provider, {
       prompt: args.prompt,
       model: args.model,
@@ -169,15 +233,15 @@ export function apply(ctx: Context, config: Config = {}): void {
       size: args.size,
       negativePrompt: args.negative_prompt,
       sourceImages,
-    }, exec.signal)
-    const value: GeneratedValue = { attachment, provider: entry.id, model: result.model, output: result.output }
+    }, signal)
+    const value: GeneratedValue = { jobId, attachment, provider: entry.id, model: result.model, output: result.output }
     const current = await settings.get()
     const workspaceRoot = exec.agent?.session.header.cwd
     if (current.saveToWorkspace && workspaceRoot !== undefined) {
       try {
-        value.savedTo = await saveImageToWorkspace({ workspaceRoot, folder: current.workspaceFolder, attachmentId: attachment.attachmentId, mediaType: result.mediaType, data: result.data, signal: exec.signal })
+        value.savedTo = await saveImageToWorkspace({ workspaceRoot, folder: current.workspaceFolder, attachmentId: attachment.attachmentId, mediaType: result.mediaType, data: result.data, signal })
       } catch (error) {
-        exec.signal.throwIfAborted()
+        signal.throwIfAborted()
         value.saveError = error instanceof Error ? error.message : String(error)
       }
     }
@@ -197,11 +261,40 @@ export function apply(ctx: Context, config: Config = {}): void {
       ...(typeof sessionId === 'string' ? { sessionId } : {}),
       ...(value.savedTo === undefined ? {} : { savedTo: value.savedTo }),
       ...(sourceIds.length > 0 ? { sourceAttachmentIds: sourceIds } : {}),
+      jobId,
     }]).catch((error: unknown) => {
       ctx.logger.warn(`${PLUGIN_SLUG}: failed to record gallery item: ${error instanceof Error ? error.message : String(error)}`)
     })
     return value
   }
+
+  /** Run one job; settles it with the finished attachment. */
+  const runJob = (jobId: string, args: ImageArgs, exec: ExecLike, sourceImages: SourceImages, sourceIds: string[], parent?: AbortSignal): Promise<GeneratedValue> =>
+    jobs.run(jobId, async signal => {
+      const value = await generateImage(jobId, args, exec, sourceImages, sourceIds, signal)
+      return { attachment: toAttachmentJson(value.attachment), value }
+    }, parent).then(settled => settled.value)
+
+  /** Background job: failures are logged (the placeholder shows them) and reported to the Agent. */
+  const startBackground = (jobId: string, args: ImageArgs, exec: ExecLike, sourceImages: SourceImages, sourceIds: string[]): Promise<void> =>
+    runJob(jobId, args, exec, sourceImages, sourceIds).then(() => {
+      notifyBackgroundJob(exec, { jobId, prompt: args.prompt })
+    }, (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
+      ctx.logger.warn(`${PLUGIN_SLUG}: background image ${jobId} failed: ${message}`)
+      if (!jobs.stopped) notifyBackgroundJob(exec, { jobId, prompt: args.prompt, error: message })
+    })
+
+  /** One generation as a job; `background` returns the pending job at once. */
+  const generateForTool = async (args: ImageArgs, exec: ExecLike, sourceImages: SourceImages, sourceIds: string[]): Promise<ImageValue> => {
+    const job = jobs.create(expectedRatio(args))
+    if (args.background !== true) return runJob(job.id, args, exec, sourceImages, sourceIds, exec.signal)
+    void startBackground(job.id, args, exec, sourceImages, sourceIds)
+    return { jobId: job.id, pending: true }
+  }
+
+  /** The conversation tools; registered only while settings.chatTools is on. */
+  const toolDefinitions: Array<Parameters<typeof ctx.tools.register>[0]> = []
 
   const providerParam = { type: 'string', description: 'Optional image provider id for this call only (see the configured providers in context); omit to use the default provider.' } as const
   const sizeParams = {
@@ -209,9 +302,10 @@ export function apply(ctx: Context, config: Config = {}): void {
     image_size: { type: 'string', enum: ['1K', '2K', '4K'], description: 'Optional resolution tier for providers that have tiers (Gemini, Seedream, xAI).' },
     size: { type: 'string', description: 'Optional exact WIDTHxHEIGHT size such as 1536x1024 or 2048x1152; overrides aspect_ratio/image_size. Use it when the user asks for a resolution; each provider\'s allowed range is listed in context.' },
     negative_prompt: { type: 'string', description: 'Optional things to avoid (ModelScope / SiliconFlow).' },
+    background: { type: 'boolean', description: 'true: return immediately and finish the image in the background while you keep answering (best for an illustration inside an explanation; embed its genimg reference where it belongs and do not wait for it). Default false: wait for the finished image.' },
   } as const
 
-  ctx.tools.register(defineTool({
+  toolDefinitions.push(defineTool({
     name: 'paint_image',
     description: 'Create a new image from a text prompt with the configured image provider. Call it on your own whenever the user wants a picture — an illustration, photo, poster, logo, icon, wallpaper, concept art, or a visual to accompany your answer — not only when they say "generate". Use edit_painting instead to change an existing image. Write a complete visual prompt: subject, composition, style, lighting, colors, and any exact text to render. The image is attached to the conversation and saved to the gallery; do not search for it afterwards.',
     parameters: {
@@ -221,13 +315,13 @@ export function apply(ctx: Context, config: Config = {}): void {
       ...sizeParams,
     },
     output: imageOutput('Generated'),
-    async execute(args, exec): Promise<GeneratedValue> {
+    async execute(args, exec): Promise<ImageValue> {
       return generateForTool(args as ImageArgs, exec as ExecLike, [], [])
     },
     presentResult: (_args, result) => imagePresentation(result),
   }))
 
-  ctx.tools.register(defineTool({
+  toolDefinitions.push(defineTool({
     name: 'paint_images',
     description: 'Generate several images in one call, one per prompt, in order (variations, a set of illustrations, storyboards). Prefer paint_image for a single image. A failed item is reported and does not stop the rest.',
     parameters: {
@@ -241,6 +335,14 @@ export function apply(ctx: Context, config: Config = {}): void {
       const input = args as Omit<ImageArgs, 'prompt'> & { prompts: string[] }
       if (input.prompts.length === 0) throw new Error('paint_images requires at least one prompt')
       if (input.prompts.length > 8) throw new Error('paint_images accepts at most 8 prompts per call; split larger batches')
+      if (input.background === true) {
+        // One pending job per prompt, generated one after another in the background.
+        const queued = input.prompts.map(prompt => ({ prompt, job: jobs.create(expectedRatio(input)) }))
+        void (async () => {
+          for (const { prompt, job } of queued) await startBackground(job.id, { ...input, prompt }, exec as ExecLike, [], [])
+        })()
+        return { images: queued.map(({ prompt, job }) => ({ jobId: job.id, pending: true as const, prompt })), failures: [] }
+      }
       const images: BatchGeneratedValue['images'] = []
       const failures: BatchGeneratedValue['failures'] = []
       for (const [index, prompt] of input.prompts.entries()) {
@@ -249,7 +351,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           continue
         }
         try {
-          images.push({ ...await generateForTool({ ...input, prompt }, exec as ExecLike, [], []), prompt })
+          images.push({ ...await generateForTool({ ...input, prompt, background: false }, exec as ExecLike, [], []), prompt })
         } catch (error) {
           failures.push({ index, prompt, error: error instanceof Error ? error.message : String(error) })
         }
@@ -260,7 +362,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     presentResult: (_args, result) => imagePresentation(result),
   }))
 
-  ctx.tools.register(defineTool({
+  toolDefinitions.push(defineTool({
     name: 'edit_painting',
     description: 'Edit, combine or restyle existing images with the configured provider. Images attached to the latest user message are already available: call edit_painting right away with just a prompt — never search the disk or invent paths for them. For an older image in this conversation pass source_attachment_id(s); for a workspace file the user names pass source_path(s). Provide at most one selector. When the user wants a person/object kept identical, say so explicitly in the prompt (keep the same subject, change only …).',
     parameters: {
@@ -274,7 +376,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       ...sizeParams,
     },
     output: imageOutput('Edited'),
-    async execute(args, exec): Promise<GeneratedValue> {
+    async execute(args, exec): Promise<ImageValue> {
       const input = args as ImageArgs & { source_attachment_id?: string; source_attachment_ids?: string[]; source_path?: string; source_paths?: string[] }
       const run = exec as ExecLike
       const sources = await resolveReferenceImages({
@@ -293,42 +395,81 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
     presentResult: (_args, result) => imagePresentation(result),
   }))
+
+  // Settings > 对话 > chatTools switches the tools on and off without a restart.
+  let unregisterTools: (() => void) | undefined
+  let disposed = false
+  const syncTools = async (): Promise<void> => {
+    const enabled = (await settings.get()).chatTools
+    if (disposed) return
+    if (enabled && unregisterTools === undefined) {
+      const disposers = toolDefinitions.map(definition => ctx.tools.register(definition))
+      unregisterTools = () => { for (const dispose of disposers) dispose() }
+    } else if (!enabled && unregisterTools !== undefined) {
+      unregisterTools()
+      unregisterTools = undefined
+    }
+  }
+  void syncTools().catch(error => ctx.logger.warn(`${PLUGIN_SLUG}: failed to register tools: ${String(error)}`))
+  ctx.effect(() => settings.onChange(() => { void syncTools().catch(() => {}) }), `${PLUGIN_SLUG}: tool switch`)
+  ctx.effect(() => () => {
+    disposed = true
+    unregisterTools?.()
+    unregisterTools = undefined
+  }, `${PLUGIN_SLUG}: tools`)
 }
 
 function attachmentSchema() {
   return {
-    type: 'object', required: true, additionalProperties: false, properties: {
+    type: 'object', additionalProperties: false, properties: {
       attachmentId: { type: 'string', required: true }, mediaType: { type: 'string', required: true }, bytes: { type: 'integer', required: true }, width: { type: 'integer', required: true }, height: { type: 'integer', required: true }, name: { type: 'string' },
       originalDimensions: { type: 'object', additionalProperties: false, properties: { width: { type: 'integer', required: true }, height: { type: 'integer', required: true } } },
     },
   } as const
 }
 
+/** Fields of one image value: finished (attachment, provider…) or pending. */
+function imageValueProperties() {
+  return {
+    jobId: { type: 'string', required: true }, pending: { type: 'boolean' },
+    attachment: attachmentSchema(),
+    provider: { type: 'string' }, model: { type: 'string' }, output: { type: 'string' }, savedTo: { type: 'string' }, saveError: { type: 'string' },
+  } as const
+}
+
+/** The inline reference a renderer (dsh-better-display) turns into the image or its placeholder. */
+function inlineReference(jobId: string): string {
+  return `Inline image reference: ${GENIMG_SCHEME}${jobId}`
+}
+
 function imageOutput(verb: 'Generated' | 'Edited') {
   return {
-    schema: {
-      type: 'object', additionalProperties: false, properties: {
-        attachment: attachmentSchema(),
-        provider: { type: 'string', required: true }, model: { type: 'string', required: true }, output: { type: 'string', required: true }, savedTo: { type: 'string' }, saveError: { type: 'string' },
-      },
-    },
-    render: (_args: unknown, value: GeneratedValue) => {
+    schema: { type: 'object', additionalProperties: false, properties: imageValueProperties() },
+    render: (_args: unknown, value: ImageValue) => {
+      if (isPending(value)) {
+        return [{ type: 'text' as const, text: `Image job ${value.jobId} is running in the background. ${inlineReference(value.jobId)}. Keep answering: do not wait for, poll or search for the image. You will be notified only if it fails.` }]
+      }
       const saved = typeof value.savedTo === 'string' ? ` Also saved to the workspace as ${value.savedTo}.` : typeof value.saveError === 'string' ? ` Saving to the workspace failed: ${value.saveError}.` : ''
       return [
-        { type: 'text' as const, text: `${verb} one image with ${value.provider}/${value.model} (${value.output}). Attachment ID: ${String(value.attachment.attachmentId)}. It is attached to the conversation and stored in the gallery.${saved} Reply to the user without reading or searching for the image.` },
+        { type: 'text' as const, text: `${verb} one image with ${value.provider}/${value.model} (${value.output}). Attachment ID: ${String(value.attachment.attachmentId)}. ${inlineReference(value.jobId)}. It is attached to the conversation and stored in the gallery.${saved} Reply to the user without reading or searching for the image.` },
         { type: 'image' as const, attachment: value.attachment },
       ]
     },
-    presentationMeta: (args: unknown, value: GeneratedValue) => ({
-      kind: 'copylee-image-gen',
-      attachment: toAttachmentJson(value.attachment),
-      provider: value.provider,
-      model: value.model,
-      output: value.output,
-      ...(verb === 'Edited' ? { operation: 'edit' } : {}),
-      ...(typeof value.savedTo === 'string' ? { savedTo: value.savedTo } : {}),
-      prompt: (args as { prompt: string }).prompt,
-    }),
+    presentationMeta: (args: unknown, value: ImageValue) => {
+      const prompt = (args as { prompt: string }).prompt
+      if (isPending(value)) return { kind: 'copylee-image-gen', jobId: value.jobId, pending: true, prompt }
+      return {
+        kind: 'copylee-image-gen',
+        jobId: value.jobId,
+        attachment: toAttachmentJson(value.attachment),
+        provider: value.provider,
+        model: value.model,
+        output: value.output,
+        ...(verb === 'Edited' ? { operation: 'edit' } : {}),
+        ...(typeof value.savedTo === 'string' ? { savedTo: value.savedTo } : {}),
+        prompt,
+      }
+    },
   } as const
 }
 
@@ -337,23 +478,23 @@ function batchOutput() {
   return {
     schema: {
       type: 'object', additionalProperties: false, properties: {
-        images: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
-          attachment: attachmentSchema(),
-          provider: { type: 'string', required: true }, model: { type: 'string', required: true }, output: { type: 'string', required: true }, savedTo: { type: 'string' }, saveError: { type: 'string' }, prompt: { type: 'string', required: true },
-        } } },
+        images: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { ...imageValueProperties(), prompt: { type: 'string', required: true } } } },
         failures: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
           index: { type: 'integer', required: true }, prompt: { type: 'string', required: true }, error: { type: 'string', required: true },
         } } },
       },
     },
-    render: (_args: unknown, value: BatchGeneratedValue) => [
-      {
-        type: 'text' as const,
-        text: `Generated ${String(value.images.length)} of ${String(value.images.length + value.failures.length)} images.${value.failures.map(failure => `\n#${String(failure.index + 1)} failed: ${failure.error}`).join('')}`,
-      },
-      ...value.images.flatMap(image => single.render({}, image).map(block =>
-        block.type === 'text' ? { ...block, text: `${block.text}\nImage prompt: ${image.prompt}` } : block)),
-    ],
+    render: (_args: unknown, value: BatchGeneratedValue) => {
+      const pending = value.images.filter(isPending).length
+      const head = pending === value.images.length && pending > 0
+        ? `Started ${String(pending)} background image jobs (generated one after another).`
+        : `Generated ${String(value.images.length)} of ${String(value.images.length + value.failures.length)} images.`
+      return [
+        { type: 'text' as const, text: `${head}${value.failures.map(failure => `\n#${String(failure.index + 1)} failed: ${failure.error}`).join('')}` },
+        ...value.images.flatMap(image => single.render({}, image).map(block =>
+          block.type === 'text' ? { ...block, text: `${block.text}\nImage prompt: ${image.prompt}` } : block)),
+      ]
+    },
     presentationMeta: (_args: unknown, value: BatchGeneratedValue) => ({
       kind: 'copylee-image-gen-batch',
       images: value.images.map(image => single.presentationMeta({ prompt: image.prompt }, image)),

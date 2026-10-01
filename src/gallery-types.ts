@@ -48,6 +48,8 @@ export interface GalleryItem {
   sourceAttachmentIds?: string[]
   /** Images from one paintings-page request share a batch id. */
   batchId?: string
+  /** Agent image job (`genimg:<jobId>` in replies). */
+  jobId?: string
   /** `generate`, `edit` or `import`. */
   operation?: 'generate' | 'edit' | 'import'
 }

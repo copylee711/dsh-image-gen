@@ -31,6 +31,8 @@ export const MODELS_ROUTE = `${ROUTE_BASE}/models`
 export const PAINT_ROUTE = `${ROUTE_BASE}/paint`
 /** Detected system proxy for the settings page. */
 export const PROXY_STATUS_ROUTE = `${ROUTE_BASE}/proxy-status`
+/** Agent image jobs: `<JOBS_ROUTE>/<id>` status, `<JOBS_ROUTE>/<id>/image` bytes. Prefix route. */
+export const JOBS_ROUTE = `${ROUTE_BASE}/jobs`
 /** Global gallery (projects, items, favorite prompts). Prefix route. */
 export const GALLERY_ROUTE = `${ROUTE_BASE}/gallery`
 
@@ -119,6 +121,8 @@ export interface PluginSettings {
   /** Provider used by the Agent tools when a call names none. */
   activeProvider: string
   proxy: GlobalProxy
+  /** Offer the image tools (paint_image, paint_images, edit_painting) to the Agent in conversations. */
+  chatTools: boolean
   /** Also write images generated in a conversation under that session's workspace. */
   saveToWorkspace: boolean
   workspaceFolder: string
@@ -237,6 +241,7 @@ export function defaultSettings(): PluginSettings {
     providers: PRESET_PROVIDERS.map(entry => structuredClone(entry)),
     activeProvider: 'modelscope',
     proxy: { mode: 'off', enabled: false, url: '', noProxy: ['localhost', '127.0.0.1', '::1'] },
+    chatTools: true,
     saveToWorkspace: true,
     workspaceFolder: PLUGIN_SLUG,
     imageDir: '',
