@@ -121,7 +121,6 @@ export function PaintingsPage({ locale }: PaintingsPageProps) {
         {tabButton('gallery', t('tabGallery'), <Images size={15} />)}
         {tabButton('prompts', t('tabPrompts'), <Bookmark size={15} />)}
       </div>
-      <span className="dig-spacer" />
       <button type="button" className="dig-icon-btn" aria-label={t('settingsTitle')} title={t('settingsTitle')} aria-pressed={false} onClick={() => setTab(tab === 'settings' ? 'paint' : 'settings')}><Settings size={17} /></button>
     </header>
     {error !== null && <div className="dig-error" role="alert" onClick={() => setError(null)} style={{ cursor: 'pointer' }}>{error}</div>}
