@@ -148,11 +148,7 @@ describe('notifyBackgroundJob', () => {
     expect(String(message.source.summary)).toContain('Gauss law diagram')
   })
 
-  it('only queues context on success or while the Agent is busy', () => {
-    const idle = agent('idle')
-    notifyBackgroundJob({ agent: idle, signal: new AbortController().signal }, { jobId: 'j1', prompt: 'p' })
-    expect(idle.followup).not.toHaveBeenCalled()
-    expect(idle.inject).toHaveBeenCalledOnce()
+  it('only queues context while the Agent is busy', () => {
     const busy = agent('running')
     notifyBackgroundJob({ agent: busy, signal: new AbortController().signal }, { jobId: 'j2', prompt: 'p', error: 'boom' })
     expect(busy.followup).not.toHaveBeenCalled()

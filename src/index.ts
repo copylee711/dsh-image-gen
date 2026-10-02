@@ -99,26 +99,26 @@ interface ExecLike {
 }
 
 /**
- * Tell the calling Agent how a background job ended, as a collapsed notice row.
- * A failure wakes an idle Agent so it can retry or explain; a success is only
- * queued as context for its next step (the image already shows in the reply).
+ * Tell the calling Agent that a background job failed, as a collapsed notice row: an idle Agent
+ * is woken so it can retry or explain, a running one gets it as context for its next step.
+ * Successes are not reported: the image already shows in the reply, and a notice would add a
+ * step that turns the finished answer into "process" (DSH treats only the last step as final).
  */
-export function notifyBackgroundJob(exec: ExecLike, outcome: { jobId: string; prompt: string; error?: string }): void {
+export function notifyBackgroundJob(exec: ExecLike, outcome: { jobId: string; prompt: string; error: string }): void {
   const agent = exec.agent
   if (agent === undefined) return
-  const failed = outcome.error !== undefined
   const subject = outcome.prompt.length > 60 ? `${outcome.prompt.slice(0, 57)}...` : outcome.prompt
   const message = createUserMessage({
     content: [{
       type: 'text',
-      text: failed
-        ? `Background image job ${outcome.jobId} failed: ${String(outcome.error)}\nImage prompt: ${outcome.prompt}\nIts placeholder in your earlier reply now shows the failure. Tell the user briefly, and retry with paint_image (background: true) if a fix is obvious (another provider, a simpler prompt); otherwise explain what they can change.`
-        : `Background image job ${outcome.jobId} finished; genimg:${outcome.jobId} now shows the image in your reply. No action needed.`,
+      text: `Background image job ${outcome.jobId} failed: ${outcome.error}
+Image prompt: ${outcome.prompt}
+Its placeholder in your earlier reply now shows the failure. Tell the user briefly, and retry with paint_image (background: true) if a fix is obvious (another provider, a simpler prompt); otherwise explain what they can change.`,
     }],
-    source: { kind: 'copylee-image-gen', form: 'notice', summary: `${failed ? 'Image generation failed' : 'Image generated'}: ${subject}`.slice(0, 120) },
+    source: { kind: 'copylee-image-gen', form: 'notice', summary: `Image generation failed: ${subject}`.slice(0, 120) },
   })
   try {
-    if (failed && agent.status === 'idle' && agent.followup !== undefined) agent.followup(message)
+    if (agent.status === 'idle' && agent.followup !== undefined) agent.followup(message)
     else agent.inject?.(message)
   } catch {
     // The Agent was disposed (conversation closed); the placeholder still shows the outcome.
@@ -277,9 +277,7 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   /** Background job: failures are logged (the placeholder shows them) and reported to the Agent. */
   const startBackground = (jobId: string, args: ImageArgs, exec: ExecLike, sourceImages: SourceImages, sourceIds: string[]): Promise<void> =>
-    runJob(jobId, args, exec, sourceImages, sourceIds).then(() => {
-      notifyBackgroundJob(exec, { jobId, prompt: args.prompt })
-    }, (error: unknown) => {
+    runJob(jobId, args, exec, sourceImages, sourceIds).then(() => undefined, (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
       ctx.logger.warn(`${PLUGIN_SLUG}: background image ${jobId} failed: ${message}`)
       if (!jobs.stopped) notifyBackgroundJob(exec, { jobId, prompt: args.prompt, error: message })
