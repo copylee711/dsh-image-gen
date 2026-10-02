@@ -22,3 +22,13 @@
 - 浏览器预览验证不等同于桌面宿主集成验证；尚未替换已安装的插件，未调用真实生图服务。
 - 用户于 2026-10-02 回复“通过”，已授权合并、推送及 npm 发布。
 - 发布版本升级至 0.1.9，通过现有 publish.yml 在推送 v0.1.9 tag 后发布；最终结果以 GitHub Actions 和 npm registry 实际核实为准。
+
+## 发布完成核实
+- fix/compact-paintings-header 已快进合并至 main，发布提交 e8039e812d4cf794ed72d1ebec70f5ed09706a24。
+- main 与 v0.1.9 标签通过 atomic push 一并推送成功。
+- 发布前再次通过类型检查、30 个测试文件 / 213 项测试、构建和打包检查。
+- GitHub Actions 发布成功：https://github.com/copylee711/dsh-image-gen/actions/runs/36978444414。
+- main CI 和 v0.1.9 CI 均成功（36978444869、36978444379）。
+- npm registry 实际确认版本 0.1.9、latest=0.1.9；发布时间为 2026-10-02 15:27:05（北京时间）。
+- npm tarball HTTP 200：https://registry.npmjs.org/@copylee/dsh-image-gen/-/dsh-image-gen-0.1.9.tgz。
+- 用户桌面宿主已安装插件的升级与实机集成验证不在本次发布核实范围内。
