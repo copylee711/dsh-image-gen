@@ -5,7 +5,7 @@
  * 28px pill filters, 8–10px radii, hairline borders.
  */
 export const STYLE = String.raw`
-.dig-root{--dig-fg:var(--dsw-alias-label-primary,#1f2329);--dig-fg2:var(--dsw-alias-label-secondary,#4e5969);--dig-fg3:var(--dsw-alias-label-tertiary,#86909c);--dig-caption:var(--dsw-alias-label-caption,#a9aeb8);--dig-bg:var(--dsw-alias-bg-base,#fff);--dig-layer:var(--dsw-alias-bg-layer-1,#f7f8fa);--dig-side:var(--dsw-specific-sidebar-fill,var(--dsw-alias-bg-layer-1,#f7f8fa));--dig-hover:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05));--dig-border:var(--dsw-alias-border-l2,rgba(0,0,0,.1));--dig-border-soft:var(--dsw-alias-border-l4,rgba(0,0,0,.06));--dig-accent:var(--dsw-alias-state-business-primary,#4d6bfe);--dig-danger:var(--dsw-alias-state-error-primary,#e5484d);--dig-focus:var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#4d6bfe));--dig-radius:10px;--dig-elev:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.12));color:var(--dig-fg);background:var(--dig-bg);font-size:14px;line-height:1.6;box-sizing:border-box}
+.dig-root{--dig-fg:var(--dsw-alias-label-primary,#1f2329);--dig-fg2:var(--dsw-alias-label-secondary,#4e5969);--dig-fg3:var(--dsw-alias-label-tertiary,#86909c);--dig-caption:var(--dsw-alias-label-caption,#a9aeb8);--dig-bg:var(--dsw-alias-bg-base,#fff);--dig-layer:var(--dsw-alias-bg-layer-1,#f7f8fa);--dig-side:var(--dsw-specific-sidebar-fill,var(--dsw-alias-bg-layer-1,#f7f8fa));--dig-hover:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05));--dig-border:var(--dsw-alias-border-l2,rgba(0,0,0,.1));--dig-border-soft:var(--dsw-alias-border-l4,rgba(0,0,0,.06));--dig-accent:var(--cl-accent,#D97757);--dig-accent-ink:var(--cl-accent-ink,#fff);--dig-danger:var(--dsw-alias-state-error-primary,#e5484d);--dig-focus:var(--dig-accent);--dig-radius:10px;--dig-elev:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.12));color:var(--dig-fg);background:var(--dig-bg);font-size:14px;line-height:1.6;box-sizing:border-box}
 .dig-root *,.dig-root *::before,.dig-root *::after{box-sizing:border-box}
 .dig-page{display:flex;flex-direction:column;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden}
 .dig-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 18px;flex:none}
@@ -68,7 +68,7 @@ export const STYLE = String.raw`
 .dig-btn{height:32px;padding:0 14px;border-radius:16px;border:.5px solid var(--dig-border);background:var(--dig-bg);color:var(--dig-fg);font:inherit;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
 .dig-btn:hover:not(:disabled){background:var(--dig-hover)}
 .dig-btn:disabled{opacity:.5;cursor:not-allowed}
-.dig-btn-primary{background:var(--dig-accent);border-color:var(--dig-accent);color:#fff}
+.dig-btn-primary{background:var(--dig-accent);border-color:var(--dig-accent);color:var(--dig-accent-ink)}
 .dig-btn-primary:hover:not(:disabled){background:color-mix(in srgb,var(--dig-accent) 88%,#000)}
 .dig-btn-danger{color:var(--dig-danger)}
 .dig-btn-sm{height:28px;padding:0 10px;font-size:12px;border-radius:14px}
@@ -129,7 +129,7 @@ export const STYLE = String.raw`
 .dig-card:hover .dig-card-overlay{opacity:1}
 .dig-card-check{position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:11px;border:1.5px solid #fff;background:rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;color:#fff}
 .dig-card[aria-selected=true]{outline:2px solid var(--dig-accent);outline-offset:-2px}
-.dig-card[aria-selected=true] .dig-card-check{background:var(--dig-accent);border-color:var(--dig-accent)}
+.dig-card[aria-selected=true] .dig-card-check{background:var(--dig-accent);border-color:var(--dig-accent);color:var(--dig-accent-ink)}
 .dig-card-star{position:absolute;top:6px;right:6px;color:#f5a623;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
 .dig-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:64px 20px;color:var(--dig-fg3);grid-column:1/-1}
 .dig-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.72);display:flex;align-items:stretch;justify-content:center}
@@ -214,7 +214,7 @@ export const STYLE = String.raw`
 .dig-switch{position:relative;width:34px;height:20px;flex:none;border-radius:10px;border:0;background:var(--dig-border);cursor:pointer;padding:0;transition:background .15s}
 .dig-switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
 .dig-switch[aria-checked=true]{background:var(--dig-accent)}
-.dig-switch[aria-checked=true]::after{transform:translateX(14px)}
+.dig-switch[aria-checked=true]::after{transform:translateX(14px);background:var(--dig-accent-ink)}
 .dig-test-result{font-size:12px;line-height:18px}
 .dig-test-ok{color:#2a9d61}
 .dig-test-fail{color:var(--dig-danger)}

@@ -12,6 +12,7 @@ import {
   type ProviderProtocol,
   type SettingsView,
 } from '../shared.js'
+import { AccentPicker } from './accent.js'
 import { api } from './api.js'
 import type { Translate } from './i18n.js'
 import { ModelList } from './model-list.js'
@@ -247,6 +248,9 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
             <span className="dig-hint">{t('imageDirHint', { path: view.effectiveImageDir })}</span>
           </div>
           <div className="dig-notice">{t('galleryNote')}</div>
+          <div className="dig-field">
+            <AccentPicker label={t('accent')} hint={t('accentHint')} names={{ orange: t('accentOrange'), blue: t('accentBlue'), black: t('accentBlack') }} />
+          </div>
         </>
         : <>
           <h2>

@@ -8,8 +8,8 @@
  */
 import { connect as tlsConnect } from 'node:tls'
 import type { Socket } from 'node:net'
-import { Agent, ProxyAgent, fetch as undiciFetch, type Dispatcher } from 'undici'
-import { SocksClient } from 'socks'
+import { createRequire } from 'node:module'
+import type { Agent, Dispatcher } from 'undici'
 import type { GlobalProxy, ProviderProxy } from './shared.js'
 import { detectSystemProxy, type SystemProxy } from './system-proxy.js'
 
@@ -112,6 +112,14 @@ export function validateProxyUrl(raw: string): string | undefined {
   return undefined
 }
 
+// undici and socks are only needed for a proxied request, and importing them costs
+// over 100 ms, so they are loaded with the first such request instead of with the plugin.
+const require = createRequire(import.meta.url)
+let undiciModule: typeof import('undici') | undefined
+const undici = () => undiciModule ??= require('undici') as typeof import('undici')
+let socksModule: typeof import('socks') | undefined
+const socks = () => socksModule ??= require('socks') as typeof import('socks')
+
 const dispatchers = new Map<string, Dispatcher>()
 
 /** One cached dispatcher per proxy URL. */
@@ -121,7 +129,7 @@ export function dispatcherFor(proxyUrl: string): Dispatcher {
   const problem = validateProxyUrl(proxyUrl)
   if (problem !== undefined) throw new Error(problem)
   const url = new URL(proxyUrl)
-  const dispatcher = url.protocol.startsWith('socks') ? socksAgent(url) : new ProxyAgent(proxyUrl)
+  const dispatcher = url.protocol.startsWith('socks') ? socksAgent(url) : new (undici().ProxyAgent)(proxyUrl)
   dispatchers.set(proxyUrl, dispatcher)
   return dispatcher
 }
@@ -136,7 +144,8 @@ function socksAgent(proxy: URL): Agent {
   const type = proxy.protocol === 'socks4:' ? 4 : 5
   const user = decodeURIComponent(proxy.username)
   const password = decodeURIComponent(proxy.password)
-  return new Agent({
+  const { SocksClient } = socks()
+  return new (undici().Agent)({
     connect(options, callback) {
       const host = options.hostname
       const port = Number(options.port) || (options.protocol === 'https:' ? 443 : 80)
@@ -188,6 +197,7 @@ export function providerFetch(proxy: ProviderProxy | undefined, global: GlobalPr
       request = { ...request, headers, body: new Uint8Array(await encoded.arrayBuffer()) }
     }
     const headers = request.headers === undefined ? undefined : Object.fromEntries(new Headers(request.headers).entries())
+    const { fetch: undiciFetch } = undici()
     const response = await undiciFetch(url, {
       ...(request as object),
       ...(headers === undefined ? {} : { headers }),
