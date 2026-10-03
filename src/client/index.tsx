@@ -15,6 +15,7 @@ import { ImageToolCard } from './image-card.js'
 import { langOf, translator, useT, type LocaleService } from './i18n.js'
 import { PaintingsPage } from './paintings-page.js'
 import { SettingsPanel } from './settings-view.js'
+import { installAccent } from './accent.js'
 import { STYLE } from './style.js'
 
 export { PaintingsPage } from './paintings-page.js'
@@ -40,6 +41,8 @@ function SettingsCard(props: { locale?: LocaleService | undefined }) {
 export function apply(ctx: Context): void {
   const locale = ctx.get('locale') as LocaleService | undefined
   const label = (): string => translator(langOf(locale))('panel')
+
+  ctx.effect(() => installAccent(), `${PLUGIN_SLUG}: accent colour`)
 
   ctx.effect(() => {
     const style = document.createElement('style')

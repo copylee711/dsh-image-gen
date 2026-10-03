@@ -1,4 +1,6 @@
-# 🎨 @copylee/dsh-image-gen
+# dsh-image-gen
+
+[![npm](https://img.shields.io/npm/v/@copylee/dsh-image-gen)](https://www.npmjs.com/package/@copylee/dsh-image-gen)
 
 DeepSeek Harness（DSH）的 AI 生图插件。DSH 左侧栏会多出一个「绘画」入口，打开的是全局画廊，与工作区无关，布局参考 Cherry Studio 的绘画页。Agent 在普通对话里也能在需要时直接调用生图工具。
 
@@ -10,11 +12,11 @@ DeepSeek Harness（DSH）的 AI 生图插件。DSH 左侧栏会多出一个「�
 
 | 入口 | 能做什么 |
 | :--- | :--- |
-| 🎨 **侧边栏 · 绘画** | 左栏切换画廊项目、设置参数（服务商、模型、比例、清晰度、数量、种子、反向提示词、参考图），中间是画板和 Prompt 输入框，右栏显示当前项目的历史 |
-| 🖼️ **侧边栏 · 图库** | 浏览所有项目的图片，支持搜索、按服务商筛选、收藏、批量移动/下载/删除、导入本地图片，可在大图查看器里「作为参考图」或「复用 Prompt」 |
-| 🔖 **收藏 Prompt** | 收藏常用 Prompt，可一键带回绘画页 |
-| 💬 **对话** | Agent 需要时自动调用 `paint_image` / `paint_images` / `edit_painting`，结果以图片卡片显示在对话里，同时存入画廊的「对话」项目 |
-| ⚙️ **设置** | 预置服务商可直接改，也能添加任意多个自定义端点；全局代理加上每个服务商单独的代理；可测试连接、拉取模型列表 |
+| **侧边栏 · 绘画** | 左栏切换画廊项目、设置参数（服务商、模型、比例、清晰度、数量、种子、反向提示词、参考图），中间是画板和 Prompt 输入框，右栏显示当前项目的历史 |
+| **侧边栏 · 图库** | 浏览所有项目的图片，支持搜索、按服务商筛选、收藏、批量移动/下载/删除、导入本地图片，可在大图查看器里「作为参考图」或「复用 Prompt」 |
+| **收藏 Prompt** | 收藏常用 Prompt，可一键带回绘画页 |
+| **对话** | Agent 需要时自动调用 `paint_image` / `paint_images` / `edit_painting`，结果以图片卡片显示在对话里，同时存入画廊的「对话」项目 |
+| **设置** | 预置服务商可直接改，也能添加任意多个自定义端点；全局代理加上每个服务商单独的代理；可测试连接、拉取模型列表；强调色（陶土橙 / 蓝色 / 黑色）与 copylee 的其他插件共用同一个选择 |
 
 ### 画廊不绑定项目
 
@@ -24,15 +26,15 @@ DeepSeek Harness（DSH）的 AI 生图插件。DSH 左侧栏会多出一个「�
 
 ## 安装
 
-在 DeepSeek Harness 项目根目录执行：
+DSH 桌面版：**插件 → 添加插件**，输入 `@copylee/dsh-image-gen`，安装后启用。
+
+命令行（`dsh web` 等其他 profile）：
 
 ```bash
-pnpm dsh plugin --profile web add @copylee/dsh-image-gen@latest
-# 或者从 GitHub 直接安装
-pnpm dsh plugin --profile web add git+https://github.com/copylee711/dsh-image-gen.git
+dsh plugin --profile web add @copylee/dsh-image-gen@latest
 ```
 
-装好后重启 DSH，左侧栏会出现「绘画」。打开后点右上角 ⚙️，或者进入 **设置 → 插件 → 图像生成**，给至少一个服务商填好 API Key 就能用了。
+装好后重启 DSH，左侧栏会出现「绘画」。打开后点右上角的设置按钮，或者进入 **设置 → 插件 → 图像生成**，给至少一个服务商填好 API Key 就能用了。
 
 需要 DSH 0.1.7 或更高版本（已在 0.2.0-rc.2 上验证），Node.js `^22.19.0` 或 `>=24`。
 
@@ -106,22 +108,14 @@ pnpm typecheck
 pnpm test        # vitest，包含本地 HTTP / SOCKS5 代理的端到端测试
 pnpm build       # 输出 lib/index.js（Host）和 lib/client.js（浏览器）
 pnpm pack:check
-
 ```
 
-### 发版
-
-推送版本 tag 后，GitHub Actions（`.github/workflows/publish.yml`）会通过 npm Trusted Publishing 自动发布，并附带 provenance：
-
-```bash
-# 先把 package.json 的 version 改成新版本并合并到 main
-git tag v0.1.1 && git push origin v0.1.1
-```
+本地联调：DSH 桌面版“添加插件”里填本仓库目录路径（以 link 方式安装），`pnpm build` 后重启 DSH 生效。
 
 ## 路线图
 
 后续计划：Prompt 灵感库、多模型横向对比、本地 ComfyUI、订阅账号登录（免 Key）、无限画布。
 
-## License
+## 许可证
 
 MIT（自有代码）。从上游移植的文件按 Apache-2.0 授权，详见 [NOTICE](NOTICE)。
