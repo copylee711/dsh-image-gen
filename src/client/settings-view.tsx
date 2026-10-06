@@ -249,7 +249,7 @@ export function SettingsPanel({ t, onSaved }: { t: Translate; onSaved?: (view: S
           </div>
           <div className="dig-notice">{t('galleryNote')}</div>
           <div className="dig-field">
-            <AccentPicker label={t('accent')} hint={t('accentHint')} names={{ orange: t('accentOrange'), blue: t('accentBlue'), black: t('accentBlack') }} />
+            <AccentPicker label={t('accent')} names={{ orange: t('accentOrange'), blue: t('accentBlue'), black: t('accentBlack') }} />
           </div>
         </>
         : <>

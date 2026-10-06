@@ -9,7 +9,6 @@ export interface LocaleService {
 const zh = {
   panel: '绘画',
   accent: '强调色',
-  accentHint: '对 copylee 的全部插件生效',
   accentOrange: '陶土橙',
   accentBlue: '蓝色',
   accentBlack: '黑色',
@@ -200,7 +199,6 @@ export type MessageKey = keyof typeof zh
 const en: Record<MessageKey, string> = {
   panel: 'Paintings',
   accent: 'Accent colour',
-  accentHint: 'applies to every copylee plugin',
   accentOrange: 'Terracotta',
   accentBlue: 'Blue',
   accentBlack: 'Black',
