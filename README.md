@@ -8,6 +8,11 @@ DeepSeek Harness（DSH）的 AI 生图插件。DSH 左侧栏会多出一个「�
 >
 > 本插件参考并移植了 [shanliuling/dsh-image-gen](https://github.com/shanliuling/dsh-image-gen)（Apache-2.0）的部分 Provider 适配代码，详见 [NOTICE](NOTICE)。
 
+
+| 绘画页 | 服务商设置 |
+|---|---|
+| ![左侧栏的「绘画」页：画廊项目、提示词输入区、历史](assets/paintings.png) | ![服务商设置：预置服务商列表、API 地址、模型列表、代理](assets/settings-providers.png) |
+
 ## 功能
 
 | 入口 | 能做什么 |
